@@ -8,13 +8,17 @@ creative spree you can pre-write the messages and also send them on demand.
 
 ## Features/Backlog
 
+- [ ] make a webserver with effect
+- [ ] proxy webserver in the frontend
+- [ ] create messages and save them in the database
+- [ ] list messages on the frontend
 - [ ] send messages on demand
 - [ ] send the first message in the message list on a schedule
-- [ ] interact with the message list in a web interface
+- [ ] interact with the message list in a web interface (delete/sent/refresh/edit)
+- [ ] see the progress on the next message
 - [ ] save the messages sent and not sent in a SQLite database for later reference with the message
       id
 - [ ] read stats on an already send message
-- [ ] see the progress on the next message
 
 ## Technical considerations
 
