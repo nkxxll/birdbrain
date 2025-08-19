@@ -1,26 +1,71 @@
-import { HttpRouter, HttpServer, HttpServerResponse } from "@effect/platform"
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
-import { Layer } from "effect"
-import { createServer } from "node:http"
+import {
+  HttpRouter,
+  HttpServer,
+  HttpServerResponse,
+  HttpMiddleware,
+  HttpServerRequest,
+} from "@effect/platform";
+import { listen } from "./Listen.js";
+import { Config, Effect } from "effect";
 
-// Define the router with a single route for the root URL
+const request_token_url = "https://api.twitter.com/oauth/request_token";
+const callback_url = "http://localhost:3000/redirect";
+const access_token_url = "https://api.twitter.com/oauth/access_token";
+const authorize_url = "https://api.twitter.com/oauth/authorize";
+const show_user_url = "https://api.twitter.com/1.1/users/show.json";
+
+const twitter_client_id = Config.string("TWITTER_CLIENT_ID");
+
+const redirect_to_auth = (client_id: string) =>
+  Effect.sync(() => {
+    const rootUrl = "https://twitter.com/i/oauth2/authorize";
+    const options = {
+      redirect_uri: "http://localhost:3000/oauth/twitter", // client url cannot be http://localhost:3000/ or http://127.0.0.1:3000/
+      client_id: client_id,
+      state: "state",
+      response_type: "code",
+      code_challenge: "y_SfRG4BmOES02uqWeIkIgLQAlTBggyf_G7uKT51ku8",
+      code_challenge_method: "S256",
+      scope: [
+        "users.email",
+        "users.read",
+        "tweet.write",
+        "tweet.read",
+        "follows.read",
+        "follows.write",
+      ].join(" "), // add/remove scopes as needed
+    };
+    const qs = new URLSearchParams(options).toString();
+    return `${rootUrl}?${qs}`;
+  });
+
+const composed = Effect.gen(function* () {
+  const id = yield* twitter_client_id;
+  const url = yield* redirect_to_auth(id);
+  return HttpServerResponse.redirect(url.toString());
+});
+
 const router = HttpRouter.empty.pipe(
-  HttpRouter.get("/", HttpServerResponse.text("Hello World"))
-)
+  HttpRouter.get("/", HttpServerResponse.text("index.html")),
+  HttpRouter.get(
+    "/oauth/twitter",
+    Effect.map(HttpServerRequest.HttpServerRequest, (req) =>
+      HttpServerResponse.text(req.url)
+    )
+  ),
+  HttpRouter.get(
+    "/login",
+    Effect.runSync(
+      composed.pipe(
+        Effect.catchTags({
+          ConfigError: (err) =>
+            HttpServerResponse.text(`Config error: ${err}`, { status: 500 }),
+        })
+      )
+    )
+  )
+);
 
-// Set up the application server with logging
-const app = router.pipe(HttpServer.serve(), HttpServer.withLogAddress)
+const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 
-// Specify the port
-const port = 3000
-
-// Create a server layer with the specified port
-const ServerLive = NodeHttpServer.layer(() => createServer(), { port })
-
-// Run the application
-NodeRuntime.runMain(Layer.launch(Layer.provide(app, ServerLive)))
-
-/*
-Output:
-timestamp=... level=INFO fiber=#0 message="Listening on http://localhost:3000"
-*/
+listen(app, 3000);
