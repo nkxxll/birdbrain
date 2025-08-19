@@ -4,17 +4,26 @@ import {
   HttpServerResponse,
   HttpMiddleware,
   HttpServerRequest,
+  UrlParams,
+  Url,
+  HttpClient,
+  FetchHttpClient,
+  HttpClientRequest,
 } from "@effect/platform";
 import { listen } from "./Listen.js";
-import { Config, Effect } from "effect";
+import { Schema, Config, Effect, Redacted } from "effect";
 
-const request_token_url = "https://api.twitter.com/oauth/request_token";
-const callback_url = "http://localhost:3000/redirect";
-const access_token_url = "https://api.twitter.com/oauth/access_token";
-const authorize_url = "https://api.twitter.com/oauth/authorize";
-const show_user_url = "https://api.twitter.com/1.1/users/show.json";
+const TWITTER_OAUTH_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const TWITTER_CLIENT_SECRET = Config.redacted(
+  Config.string("TWITTER_CLIENT_SECRET")
+);
+const TWITTER_CLIENT_ID = Config.string("TWITTER_CLIENT_ID");
+const CONFIG_APP_URL = Config.string("APP_URL");
 
-const twitter_client_id = Config.string("TWITTER_CLIENT_ID");
+const basicAuthToken = (id: string, secret: string) =>
+  Buffer.from(`${id}:${secret}`, "utf8").toString("base64");
+
+let token = "";
 
 const redirect_to_auth = (client_id: string) =>
   Effect.sync(() => {
@@ -40,17 +49,98 @@ const redirect_to_auth = (client_id: string) =>
   });
 
 const composed = Effect.gen(function* () {
-  const id = yield* twitter_client_id;
+  const id = yield* TWITTER_CLIENT_ID;
   const url = yield* redirect_to_auth(id);
   return HttpServerResponse.redirect(url.toString());
 });
+
+// 1. Define the Schema
+// This schema describes the exact shape of the object we expect from the Twitter API.
+// Using literals for fixed string values like "bearer" and numbers like 7200 provides strong validation.
+const TwitterTokenResponseSchema = Schema.Struct({
+  token_type: Schema.Literal("bearer"),
+  expires_in: Schema.Number,
+  access_token: Schema.String,
+  scope: Schema.String,
+});
+
+// We can also infer the type from the schema for full type safety.
+type TwitterTokenResponse = Schema.Schema.Type<
+  typeof TwitterTokenResponseSchema
+>;
+
+const makeRequest = (url: string | URL) =>
+  Effect.gen(function* () {
+    // Access HttpClient
+    const client = yield* HttpClient.HttpClient;
+
+    const id = yield* TWITTER_CLIENT_ID;
+    const secret = yield* TWITTER_CLIENT_SECRET;
+
+    // Create a GET request and set the Authorization header
+    const req = HttpClientRequest.get(url).pipe(
+      HttpClientRequest.setHeader(
+        "Authorization",
+        `Basic ${basicAuthToken(id, Redacted.value(secret))}`
+      )
+    );
+
+    // Create and execute a GET request
+    const response = yield* client.execute(req);
+    const json = yield* response.json;
+    const tokenResponse = Schema.decodeUnknownSync(TwitterTokenResponseSchema)(
+      json
+    );
+    return tokenResponse;
+  }).pipe(
+    // Provide the HttpClient
+    Effect.provide(FetchHttpClient.layer)
+  );
 
 const router = HttpRouter.empty.pipe(
   HttpRouter.get("/", HttpServerResponse.text("index.html")),
   HttpRouter.get(
     "/oauth/twitter",
     Effect.map(HttpServerRequest.HttpServerRequest, (req) =>
-      HttpServerResponse.text(req.url)
+      Effect.runSync(
+        Effect.gen(function* () {
+          const code = yield* req.urlParamsBody.pipe(
+            Effect.flatMap(UrlParams.getFirst("code"))
+          );
+          const client_id = yield* TWITTER_CLIENT_ID;
+          const authRequest = Url.setUrlParams(
+            new URL(TWITTER_OAUTH_TOKEN_URL),
+            UrlParams.fromInput([
+              ["code", code],
+              ["client_id", client_id],
+              ["code_verifier", "8KxxO-RPl0bLSxX5AWwgdiFbMnry_VOKzFeIlVA7NoA"],
+              ["redirect_uri", `http://www.localhost:3001/oauth/twitter`],
+              ["grant_type", "authorization_code"],
+            ])
+          );
+          const response = yield* makeRequest(authRequest);
+          // bad bad side effect
+          token = response.access_token;
+          const app_url = yield* CONFIG_APP_URL;
+          return HttpServerResponse.redirect(app_url);
+        }).pipe(
+          Effect.catchTags({
+            ConfigError: (err) =>
+              HttpServerResponse.text(`Config error: ${err.message}`, {
+                status: 500,
+              }),
+            RequestError: (err) =>
+              HttpServerResponse.text(`Request error: ${err.message}`, {
+                status: 500,
+              }),
+            NoSuchElementException: (err) =>
+              HttpServerResponse.text(
+                `No such element exception: ${err.message}`,
+                { status: 500 }
+              ),
+          })
+        )
+      )
     )
   ),
   HttpRouter.get(
