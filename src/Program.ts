@@ -15,7 +15,7 @@ import { Schema, Config, Effect, Redacted, Console } from "effect";
 import { redacted } from "effect/Config";
 import { ParseError } from "effect/Cron";
 
-const TWITTER_OAUTH_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const TWITTER_CLIENT_SECRET = Config.redacted(
   Config.string("TWITTER_CLIENT_SECRET")
 );
@@ -92,7 +92,7 @@ const makeRequest = (url: string | URL) =>
     const secret = yield* TWITTER_CLIENT_SECRET;
 
     // Create a GET request and set the Authorization header
-    const req = HttpClientRequest.get(url).pipe(
+    const req = HttpClientRequest.post(url).pipe(
       HttpClientRequest.setHeader(
         "Authorization",
         `Basic ${basicAuthToken(id, Redacted.value(secret))}`
@@ -101,8 +101,9 @@ const makeRequest = (url: string | URL) =>
 
     // Create and execute a GET request
     const response = yield* client.execute(req);
-    const json = yield* response.json;
+    yield* Console.log(`received response ${JSON.stringify(response)}`);
 
+    const json = yield* response.json;
     yield* Console.log(`received json ${json}`);
 
     const tokenResponse = yield* Schema.decodeUnknown(
@@ -123,7 +124,9 @@ const router = HttpRouter.empty.pipe(
     "/oauth/twitter",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
       Effect.gen(function* (_) {
-        const { state, code } = getAuthParams("http://localhost:3000" + request.url);
+        const { state, code } = getAuthParams(
+          "http://localhost:3000" + request.url
+        );
 
         if (state === undefined || code === undefined) {
           throw new ParseError({ message: "query parse error" });
