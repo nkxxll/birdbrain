@@ -9,22 +9,29 @@ import {
   HttpClient,
   FetchHttpClient,
   HttpClientRequest,
+  HttpBody,
 } from "@effect/platform";
 import { listen } from "./Listen.js";
 import {
+  Logger,
   Option,
   Schema,
   Config,
   Effect,
   Redacted,
-  Console,
   Layer,
   Ref,
   HashMap,
   Context,
 } from "effect";
 import { ParseError } from "effect/Cron";
-import { randomBytes } from "crypto";
+import { Hash, randomBytes } from "crypto";
+import {
+  ApiResponse,
+  ApiTweetPostRequest,
+  TwitterTokenResponse,
+  TwitterTokenResponseSchema,
+} from "./Models.js";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -36,6 +43,7 @@ const sessionCookieDefaults = {
   // expires or maxAge: set depending on session strategy
 };
 
+const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const TWITTER_CLIENT_SECRET = Config.redacted(
   Config.string("TWITTER_CLIENT_SECRET")
@@ -43,24 +51,18 @@ const TWITTER_CLIENT_SECRET = Config.redacted(
 const TWITTER_CLIENT_ID = Config.string("TWITTER_CLIENT_ID");
 const CONFIG_APP_URL = Config.string("APP_URL");
 
-const basicAuthToken = (id: string, secret: string) =>
-  Buffer.from(`${id}:${secret}`, "utf8").toString("base64");
-
 export interface SessionStore {
   sessions: Ref.Ref<HashMap.HashMap<string, TwitterTokenResponse>>;
 }
 
 export class SessionStoreTag extends Context.Tag("SessionStore")<
   SessionStoreTag,
-  SessionStore
+  Ref.Ref<HashMap.HashMap<string, TwitterTokenResponse>>
 >() {}
 
 export const SessionStoreLive = Layer.effect(
   SessionStoreTag,
-  Effect.map(
-    Ref.make(HashMap.empty<string, TwitterTokenResponse>()),
-    (sessions) => ({ sessions })
-  )
+  Ref.make(HashMap.empty<string, TwitterTokenResponse>())
 );
 
 /**
@@ -76,17 +78,11 @@ export const SessionStoreLive = Layer.effect(
 function generateSessionId(
   length: number = 32
 ): Effect.Effect<string, Error, never> {
-  // We use Effect.gen to write the code in a sequential, imperative style.
-  // We yield from the NodeRandom service to get a secure buffer of random bytes.
-
   return Effect.async((resume) =>
     randomBytes(length, (err, buf) => {
       if (err === null) {
-        // We convert the buffer to a base64 string for a compact, readable format.
-        // Effect handles any potential errors during the process.
         var sessionId = buf.toString("base64");
 
-        // The Effect resolves to the final session ID string.
         return resume(Effect.succeed(sessionId));
       } else {
         resume(Effect.fail(err));
@@ -111,7 +107,7 @@ const redirect_to_auth = (client_id: string) =>
   Effect.sync(() => {
     const rootUrl = "https://twitter.com/i/oauth2/authorize";
     const options = {
-      redirect_uri: "http://localhost:3000/oauth/twitter", // client url cannot be http://localhost:3000/ or http://127.0.0.1:3000/
+      redirect_uri: "http://localhost:3000/oauth/twitter",
       client_id: client_id,
       state: "state",
       response_type: "code",
@@ -136,18 +132,30 @@ const composed = Effect.gen(function* () {
   return HttpServerResponse.redirect(url.toString());
 });
 
-const TwitterTokenResponseSchema = Schema.Struct({
-  token_type: Schema.Literal("bearer"),
-  expires_in: Schema.Number,
-  access_token: Schema.String,
-  scope: Schema.String,
-});
+const makeTweetPostRequest = (text: string, authToken: string) =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
 
-type TwitterTokenResponse = Schema.Schema.Type<
-  typeof TwitterTokenResponseSchema
->;
+    const body: ApiTweetPostRequest = {
+      text: text,
+    };
 
-const makeRequest = (url: string | URL) =>
+    const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
+      HttpClientRequest.bearerToken(authToken),
+      HttpClientRequest.setBody(
+        HttpBody.text(JSON.stringify(body), "application/json")
+      )
+    );
+
+    const response = yield* client.execute(req);
+
+    const json = yield* response.json;
+
+    const postResponse = yield* Schema.decodeUnknown(ApiResponse)(json);
+    return postResponse;
+  });
+
+const makeAuthRequest = (url: string | URL) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
 
@@ -155,17 +163,12 @@ const makeRequest = (url: string | URL) =>
     const secret = yield* TWITTER_CLIENT_SECRET;
 
     const req = HttpClientRequest.post(url).pipe(
-      HttpClientRequest.setHeader(
-        "Authorization",
-        `Basic ${basicAuthToken(id, Redacted.value(secret))}`
-      )
+      HttpClientRequest.basicAuth(id, Redacted.value(secret))
     );
 
     const response = yield* client.execute(req);
-    yield* Console.log(`received response ${JSON.stringify(response)}`);
 
     const json = yield* response.json;
-    yield* Console.log(`received json ${json}`);
 
     const tokenResponse = yield* Schema.decodeUnknown(
       TwitterTokenResponseSchema
@@ -178,17 +181,15 @@ const router = HttpRouter.empty.pipe(
     "/",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
       Effect.gen(function* () {
-        const { sessions } = yield* SessionStoreTag;
+        const sessions = yield* SessionStoreTag;
         const kv = yield* Ref.get(sessions);
-        const sessionId = req.cookies["sessionId"];
-        if (!sessionId) {
+        const sessionId = Option.fromNullable(req.cookies["sessionId"]);
+        if (Option.isNone(sessionId)) {
           return HttpServerResponse.html(
             'no session id Welcome login buddy <a href="/login">login</a>'
           );
         }
-        // yield* Console.log(appState);
-        // const tokenResponse = HashMap.get(appState, sessionId);
-        const tokenResponse = HashMap.get(kv, sessionId);
+        const tokenResponse = HashMap.get(kv, sessionId.value);
 
         return HttpServerResponse.text(
           JSON.stringify(
@@ -206,7 +207,7 @@ const router = HttpRouter.empty.pipe(
     "/oauth/twitter",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
       Effect.gen(function* () {
-        const { sessions } = yield* SessionStoreTag;
+        const sessions = yield* SessionStoreTag;
         const { state, code } = getAuthParams(
           "http://localhost:3000" + request.url
         );
@@ -228,20 +229,13 @@ const router = HttpRouter.empty.pipe(
           ])
         );
 
-        yield* Console.log(authRequest);
-        const tokenResponse = yield* makeRequest(authRequest);
+        const tokenResponse = yield* makeAuthRequest(authRequest);
 
         const sessionId = yield* generateSessionId();
 
         yield* Ref.update(sessions, (state) =>
           HashMap.set(state, sessionId, tokenResponse)
         );
-        // appState = HashMap.set(appState, sessionId, tokenResponse);
-
-        const kv = yield* Ref.get(sessions);
-        yield* Console.log(`kv after update ${kv}`);
-
-        yield* Console.log(`session id is: ${sessionId}`);
 
         return yield* HttpServerResponse.redirect("/").pipe(
           HttpServerResponse.setCookie(
@@ -250,38 +244,42 @@ const router = HttpRouter.empty.pipe(
             sessionCookieDefaults
           )
         );
-      }).pipe(
-        Effect.catchTags({
-          CookieError: (err) =>
-            HttpServerResponse.text(`Cookie error: ${err.message}`, {
-              status: 500,
-            }),
-          ConfigError: (err) =>
-            HttpServerResponse.text(`Config error: ${err.message}`, {
-              status: 500,
-            }),
-          RequestError: (err) =>
-            HttpServerResponse.text(`Request error: ${err.message}`, {
-              status: 500,
-            }),
-          ResponseError: (err) =>
-            HttpServerResponse.text(`Response error: ${err.message}`, {
-              status: 500,
-            }),
-          ParseError: (err) =>
-            HttpServerResponse.text(`Parse error: ${err.message}`, {
-              status: 500,
-            }),
-        })
-      )
+      })
     )
   ),
-  HttpRouter.get(
-    "/login",
-    composed.pipe(
-      Effect.catchTags({
-        ConfigError: (err) =>
-          HttpServerResponse.text(`Config error: ${err}`, { status: 500 }),
+  HttpRouter.get("/login", composed),
+  HttpRouter.post(
+    "/tweet",
+    Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
+      Effect.gen(function* () {
+        // NOTE you could pack this cookies session id thing into a either or with either http.res not token not found or auth_token
+        const session = yield* SessionStoreTag;
+        const sessionId = Option.fromNullable(req.cookies["sessionId"]);
+        if (Option.isNone(sessionId)) {
+          return HttpServerResponse.html(
+            'no session id Welcome login buddy <a href="/login">login</a>'
+          );
+        }
+        const kv = yield* Ref.get(session);
+        const tokenResponse = HashMap.get(kv, sessionId.value);
+        if (Option.isNone(tokenResponse)) {
+          return HttpServerResponse.html(
+            'no session id found in session store... Welcome login buddy <a href="/login">login</a>'
+          );
+        }
+        // END NOTE
+        const json = yield* req.json;
+
+        const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
+          ApiTweetPostRequest
+        )(json);
+
+        const apiResponse = yield* makeTweetPostRequest(
+          request.text,
+          tokenResponse.value.access_token
+        );
+
+        return yield* HttpServerResponse.json(JSON.stringify(apiResponse));
       })
     )
   )
@@ -289,4 +287,12 @@ const router = HttpRouter.empty.pipe(
 
 const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 
-listen(app.pipe(Layer.provide(SessionStoreLive)), 3000);
+listen(
+  // provide the pretty logger here so that we make pretty logs with the Effect.log* functions
+  app.pipe(
+    Layer.provide(SessionStoreLive),
+    Layer.provide(Logger.pretty),
+    Layer.provide(FetchHttpClient.layer)
+  ),
+  3000
+);
