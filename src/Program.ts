@@ -25,13 +25,14 @@ import {
   Context,
 } from "effect";
 import { ParseError } from "effect/Cron";
-import { Hash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import {
   ApiResponse,
   ApiTweetPostRequest,
   TwitterTokenResponse,
   TwitterTokenResponseSchema,
 } from "./Models.js";
+import { SessionStoreLive, SessionStoreTag } from "./Services.js";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -50,20 +51,6 @@ const TWITTER_CLIENT_SECRET = Config.redacted(
 );
 const TWITTER_CLIENT_ID = Config.string("TWITTER_CLIENT_ID");
 const CONFIG_APP_URL = Config.string("APP_URL");
-
-export interface SessionStore {
-  sessions: Ref.Ref<HashMap.HashMap<string, TwitterTokenResponse>>;
-}
-
-export class SessionStoreTag extends Context.Tag("SessionStore")<
-  SessionStoreTag,
-  Ref.Ref<HashMap.HashMap<string, TwitterTokenResponse>>
->() {}
-
-export const SessionStoreLive = Layer.effect(
-  SessionStoreTag,
-  Ref.make(HashMap.empty<string, TwitterTokenResponse>())
-);
 
 /**
  * Generates a cryptographically secure random session ID using an Effect.
