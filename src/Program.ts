@@ -10,8 +10,9 @@ import {
   FetchHttpClient,
   HttpClientRequest,
   HttpBody,
+  HttpClientResponse,
 } from "@effect/platform";
-import { listen } from "./Listen.js";
+import { listen, main, cron } from "./Compose.js";
 import {
   Logger,
   Option,
@@ -22,17 +23,15 @@ import {
   Layer,
   Ref,
   HashMap,
-  Context,
 } from "effect";
 import { ParseError } from "effect/Cron";
 import { randomBytes } from "crypto";
 import {
   ApiResponse,
   ApiTweetPostRequest,
-  TwitterTokenResponse,
   TwitterTokenResponseSchema,
 } from "./Models.js";
-import { SessionStoreLive, SessionStoreTag } from "./Services.js";
+import { SessionStore } from "./Services.js";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -133,13 +132,9 @@ const makeTweetPostRequest = (text: string, authToken: string) =>
         HttpBody.text(JSON.stringify(body), "application/json")
       )
     );
+    const postResponse = yield* client.execute(req);
 
-    const response = yield* client.execute(req);
-
-    const json = yield* response.json;
-
-    const postResponse = yield* Schema.decodeUnknown(ApiResponse)(json);
-    return postResponse;
+    return yield* HttpClientResponse.schemaBodyJson(ApiResponse)(postResponse);
   });
 
 const makeAuthRequest = (url: string | URL) =>
@@ -168,7 +163,7 @@ const router = HttpRouter.empty.pipe(
     "/",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
       Effect.gen(function* () {
-        const sessions = yield* SessionStoreTag;
+        const sessions = yield* SessionStore;
         const kv = yield* Ref.get(sessions);
         const sessionId = Option.fromNullable(req.cookies["sessionId"]);
         if (Option.isNone(sessionId)) {
@@ -194,7 +189,7 @@ const router = HttpRouter.empty.pipe(
     "/oauth/twitter",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
       Effect.gen(function* () {
-        const sessions = yield* SessionStoreTag;
+        const sessions = yield* SessionStore;
         const { state, code } = getAuthParams(
           "http://localhost:3000" + request.url
         );
@@ -240,7 +235,7 @@ const router = HttpRouter.empty.pipe(
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
       Effect.gen(function* () {
         // NOTE you could pack this cookies session id thing into a either or with either http.res not token not found or auth_token
-        const session = yield* SessionStoreTag;
+        const session = yield* SessionStore;
         const sessionId = Option.fromNullable(req.cookies["sessionId"]);
         if (Option.isNone(sessionId)) {
           return HttpServerResponse.html(
@@ -257,6 +252,7 @@ const router = HttpRouter.empty.pipe(
         // END NOTE
         const json = yield* req.json;
 
+        yield* Effect.log(`Json from the client: ${json}`);
         const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
           ApiTweetPostRequest
         )(json);
@@ -274,12 +270,16 @@ const router = HttpRouter.empty.pipe(
 
 const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 
-listen(
+const listenEffect = listen(
   // provide the pretty logger here so that we make pretty logs with the Effect.log* functions
   app.pipe(
-    Layer.provide(SessionStoreLive),
+    Layer.provide(SessionStore.Default),
     Layer.provide(Logger.pretty),
     Layer.provide(FetchHttpClient.layer)
   ),
   3000
 );
+
+const cronEffect = cron();
+
+main(listenEffect, cronEffect);

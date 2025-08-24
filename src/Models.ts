@@ -1,11 +1,12 @@
 import { Schema } from "effect";
 
-const Data = Schema.Struct({
-  id: Schema.String,
+export const PostApiData = Schema.Struct({
   text: Schema.String,
+  id: Schema.String,
+  edit_history_tweet_ids: Schema.Array(Schema.String),
 });
 
-const ErrorItem = Schema.Struct({
+export const PostApiError = Schema.Struct({
   detail: Schema.String,
   status: Schema.Number,
   title: Schema.String,
@@ -13,10 +14,15 @@ const ErrorItem = Schema.Struct({
 });
 
 export const ApiResponse = Schema.Struct({
-  data: Data,
-  errors: Schema.Array(ErrorItem),
+  data: PostApiData,
+  errors: Schema.Array(PostApiError).pipe(
+    Schema.optional,
+    Schema.withDecodingDefault(() => [])
+  ),
 });
 
+export type PostApiData = Schema.Schema.Type<typeof PostApiData>;
+export type PostApiError = Schema.Schema.Type<typeof PostApiError>;
 export type ApiResponse = Schema.Schema.Type<typeof ApiResponse>;
 
 export const TwitterTokenResponseSchema = Schema.Struct({
@@ -34,4 +40,6 @@ export const ApiTweetPostRequest = Schema.Struct({
   text: Schema.String,
 });
 
-export type ApiTweetPostRequest = Schema.Schema.Type<typeof ApiTweetPostRequest>;
+export type ApiTweetPostRequest = Schema.Schema.Type<
+  typeof ApiTweetPostRequest
+>;
