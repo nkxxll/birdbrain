@@ -1,26 +1,44 @@
 # BridBrain
 
-This is a project to send very important and life changing messages to twitter.com (formally known as
-X.com).
+![BirdBainLogo](./assets/birdbrain_logo.png)
 
-You only have to provide you API key as env var and the messages can flow in when you have a
+This is a project to send very important and life changing messages to twitter.com (formally known as
+X.com). First and foremost this is a project for me to (really) learn Effect. I tried it before but
+I haven't build something _real_ with it jet.
+
+You only have to provide your API key as env var and the messages can flow in when you have a
 creative spree you can pre-write the messages and also send them on demand.
 
 ## Features/Backlog
 
-- [ ] make a webserver with effect
-- [ ] proxy webserver in the frontend
+### Effect Backend (focus)
+
+- [x] make a webserver with effect
+- [x] send a message to the twitter api
 - [ ] create messages and save them in the database
-- [ ] list messages on the frontend
-- [ ] send messages on demand
-- [ ] send the first message in the message list on a schedule
-- [ ] interact with the message list in a web interface (delete/sent/refresh/edit)
-- [ ] see the progress on the next message
+- [ ] send the first/random message in the message list on a schedule
+- [ ] send the progress on the next scheduled message
 - [ ] save the messages sent and not sent in a SQLite database for later reference with the message
       id
+  - [x] sql service
+  - [ ] create the schema
+  - [ ] test the query and execute functionality
 - [ ] read stats on an already send message
 
+### Vite Frontend
+
+- [ ] proxy webserver in the frontend
+- [ ] list messages on the frontend
+- [ ] send messages on demand
+- [ ] interact with the message list in a web interface (delete/sent/refresh/edit)
+- [ ] see the progress on the next scheduled message
+
 ## Technical considerations
+
+### SQLite
+
+I personally use SQLite a lot because my apps do not need the scale of a bigger non-file database
+and it is easy to integrate (also easy to change).
 
 ### Tweet Data Type
 
@@ -56,5 +74,5 @@ improve availability of the app with the improved error handling of the effect l
 
 ## Contributions
 
-If every someone reads this and wants to contribute... You are welcome give it a shot this is a good
+If someone reads this and wants to contribute... You are welcome give it a shot this is a good
 first contribution to an open source project :D. Please format the code with biome first, thanks!
