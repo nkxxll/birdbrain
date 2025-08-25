@@ -25,12 +25,20 @@ import {
 } from "effect";
 import { ParseError } from "effect/Cron";
 import {
-  ApiResponse,
+  ApiPostResponse,
   ApiTweetPostRequest,
+  ApiUserDataResponse,
+  SavePostRequest,
   SessionToken,
   TwitterTokenResponseSchema,
+  UserData,
 } from "./Models.js";
-import { AppConfig, SessionStore, VerifierStore } from "./Services.js";
+import {
+  AppConfig,
+  SessionStore,
+  SQLiteService,
+  VerifierStore,
+} from "./Services.js";
 import { generateRandomBytes } from "./Utils.js";
 import { SessionTokenMiddleware } from "./Middleware.js";
 
@@ -42,6 +50,7 @@ const sessionCookieDefaults = {
   priority: "high" as const, // browsers send this cookie earlier under pressure
 };
 
+const TWITTER_USER_ME_URL = "https://api.x.com/2/users/me";
 const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const TWITTER_REDIRECT_URL = "http://localhost:3000/oauth/twitter";
@@ -74,7 +83,21 @@ const makeTweetPostRequest = (text: string, authToken: string) =>
     );
     const postResponse = yield* client.execute(req);
 
-    return yield* HttpClientResponse.schemaBodyJson(ApiResponse)(postResponse);
+    return yield* HttpClientResponse.schemaBodyJson(ApiPostResponse)(
+      postResponse
+    );
+  });
+
+const makeUserDataRequest = (authToken: string) =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+
+    const req = HttpClientRequest.get(TWITTER_USER_ME_URL).pipe(
+      HttpClientRequest.bearerToken(authToken)
+    );
+    const postResponse = yield* client.execute(req);
+
+    return yield* postResponse.json;
   });
 
 const makeAuthRequest = (url: string | URL) =>
@@ -99,7 +122,111 @@ const makeAuthRequest = (url: string | URL) =>
     return tokenResponse;
   }).pipe(Effect.provide(FetchHttpClient.layer));
 
+const savePost = (savePostRequest: SavePostRequest) =>
+  Effect.gen(function* () {
+    const { query, exec } = yield* SQLiteService;
+    const sql = `INSERT OR IGNORE INTO posts (user_id, content) VALUES (?1, ?2);`;
+
+    const res = yield* exec(sql, [
+      savePostRequest.userId,
+      savePostRequest.text,
+    ]);
+    yield* Effect.log(
+      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
+    );
+  });
+const makeUser = (userData: UserData) =>
+  Effect.gen(function* () {
+    const { query, exec } = yield* SQLiteService;
+    const sql = `INSERT OR IGNORE INTO users (id, username, name) VALUES (?1, ?2, ?3);`;
+
+    const res = yield* exec(sql, [
+      userData.id,
+      userData.username,
+      userData.name,
+    ]);
+    yield* Effect.log(
+      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
+    );
+  });
+
+const queryPosts = (user: UserData) =>
+  Effect.gen(function* () {
+    const { query, exec } = yield* SQLiteService;
+    const sql = `SELECT * FROM posts WHERE user_id = ?1;`;
+    const res = yield* query(sql, [user.id]);
+    return res;
+  });
+
 const authenticatedRouter = HttpRouter.empty.pipe(
+  HttpRouter.get(
+    "/myuser",
+    Effect.gen(function* () {
+      const sessionStore = yield* SessionStore;
+      const sessionCookie = yield* SessionToken;
+      const kv = yield* Ref.get(sessionStore);
+
+      const tokenResponse = HashMap.get(kv, sessionCookie);
+      if (Option.isNone(tokenResponse)) {
+        return HttpServerResponse.text(
+          "The session token is in the store but there is not auth token",
+          { status: 500 }
+        );
+      }
+
+      const json = yield* makeUserDataRequest(tokenResponse.value.access_token);
+
+      return yield* HttpServerResponse.json(json);
+    })
+  ),
+  HttpRouter.get(
+    "/posts",
+    Effect.gen(function* () {
+      const sessionStore = yield* SessionStore;
+      const sessionCookie = yield* SessionToken;
+      const kv = yield* Ref.get(sessionStore);
+
+      const tokenResponse = HashMap.get(kv, sessionCookie);
+      if (Option.isNone(tokenResponse)) {
+        return HttpServerResponse.text(
+          "The session token is in the store but there is not auth token",
+          { status: 500 }
+        );
+      }
+
+      const json = yield* makeUserDataRequest(tokenResponse.value.access_token);
+      const data = yield* Schema.decodeUnknown(ApiUserDataResponse)(json);
+
+      if (data.errors) {
+        return yield* HttpServerResponse.json(data.errors, { status: 500 });
+      }
+
+      if (!data.data) {
+        return HttpServerResponse.text(
+          "There is no data in the user data response",
+          { status: 500 }
+        );
+      }
+
+      const posts = yield* queryPosts(data.data!);
+      return yield* HttpServerResponse.json(posts);
+    })
+  ),
+  HttpRouter.post(
+    "/savepost",
+    Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
+      Effect.gen(function* () {
+        const json = yield* req.json;
+
+        const request: SavePostRequest = yield* Schema.decodeUnknown(
+          SavePostRequest
+        )(json);
+
+        yield* savePost(request);
+        return HttpServerResponse.text("Successfully saved!", { status: 201 });
+      })
+    )
+  ),
   HttpRouter.post(
     "/tweet",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
@@ -216,6 +343,21 @@ const router = HttpRouter.empty.pipe(
           HashMap.set(state, sessionId, tokenResponse)
         );
 
+        // create the user in the database if the user does not exist
+        const userRes = yield* makeUserDataRequest(tokenResponse.access_token);
+        yield* Effect.log(JSON.stringify(userRes));
+        const data = yield* Schema.decodeUnknown(ApiUserDataResponse)(userRes);
+        if (data.errors) {
+          return yield* HttpServerResponse.json(data.errors, { status: 500 });
+        }
+        if (!data.data) {
+          return HttpServerResponse.text(
+            "Data from user request is not there!",
+            { status: 500 }
+          );
+        }
+        yield* makeUser(data.data!);
+
         return yield* HttpServerResponse.redirect(config.appUrl).pipe(
           HttpServerResponse.setCookie(
             "sessionId",
@@ -283,6 +425,7 @@ const listenEffect = listen(
     Layer.provide(AppConfig.Default),
     Layer.provide(SessionStore.Default),
     Layer.provide(VerifierStore.Default),
+    Layer.provide(SQLiteService.Default),
     Layer.provide(Logger.pretty),
     Layer.provide(FetchHttpClient.layer)
   ),

@@ -1,5 +1,8 @@
 import { HashMap, Ref, Effect, Config, ConfigError } from "effect";
-import { TwitterTokenResponse } from "./Models.js";
+import {
+  DatabaseError,
+  TwitterTokenResponse,
+} from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
 
 export class SessionStore extends Effect.Service<SessionStore>()(
@@ -25,21 +28,22 @@ export class SQLiteService extends Effect.Service<SQLiteService>()(
   {
     effect: Effect.gen(function* () {
       const db = new Database("local.sqlite");
+      const exec = (sql: string, params?: SQLQueryBindings[]) =>
+        Effect.try({
+          try: () => db.run(sql, params || []),
+          catch: (e: unknown) =>
+            new DatabaseError({ message: "Database exec failed", cause: e }),
+        });
 
+      const query = (sql: string, params?: SQLQueryBindings[]) =>
+        Effect.try({
+          try: () => db.prepare(sql).all(...(params || [])),
+          catch: (e: unknown) =>
+            new DatabaseError({ message: "Database query failed", cause: e }),
+        });
       return {
-        exec: (sql: string, params?: SQLQueryBindings[]) =>
-          Effect.try({
-            try: () => db.run(sql, params || []),
-            catch: (e: unknown) =>
-              new Error("Database exec failed", { cause: e }),
-          }),
-
-        query: (sql: string, params?: SQLQueryBindings[]) =>
-          Effect.try({
-            try: () => db.prepare(sql).all(...(params || [])),
-            catch: (e: unknown) =>
-              new Error(`Database query failed`, { cause: e }),
-          }),
+        exec,
+        query,
       };
     }),
   }

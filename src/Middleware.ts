@@ -27,7 +27,7 @@ export const SessionTokenMiddleware = HttpMiddleware.make((app) =>
     );
   }).pipe(
     Effect.catchTag("SessionTokenNotFound", () =>
-      HttpServerResponse.text("Session Not Logged", { status: 401 })
+      HttpServerResponse.text("Session Not Logged In", { status: 401 })
     )
   )
 );

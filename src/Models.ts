@@ -5,6 +5,13 @@ export class SessionToken extends Context.Tag("SessionToken")<
   string
 >() {}
 
+export class DatabaseError extends Data.TaggedError(
+  "SessionTokenNotFound"
+)<{
+  message?: string;
+  cause?: unknown;
+}> {}
+
 export class SessionTokenNotFound extends Data.TaggedError(
   "SessionTokenNotFound"
 )<{
@@ -18,24 +25,34 @@ export const PostApiData = Schema.Struct({
   edit_history_tweet_ids: Schema.Array(Schema.String),
 });
 
-export const PostApiError = Schema.Struct({
+export const ApiError = Schema.Struct({
   detail: Schema.String,
   status: Schema.Number,
   title: Schema.String,
   type: Schema.String,
 });
 
-export const ApiResponse = Schema.Struct({
-  data: PostApiData,
-  errors: Schema.Array(PostApiError).pipe(
-    Schema.optional,
-    Schema.withDecodingDefault(() => [])
-  ),
+export const UserData = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  username: Schema.String,
+});
+
+export type UserData = Schema.Schema.Type<typeof UserData>;
+
+export const ApiUserDataResponse = Schema.Struct({
+  data: UserData.pipe(Schema.optional),
+  errors: Schema.Array(ApiError).pipe(Schema.optional),
+});
+
+export const ApiPostResponse = Schema.Struct({
+  data: PostApiData.pipe(Schema.optional),
+  errors: Schema.Array(ApiError).pipe(Schema.optional),
 });
 
 export type PostApiData = Schema.Schema.Type<typeof PostApiData>;
-export type PostApiError = Schema.Schema.Type<typeof PostApiError>;
-export type ApiResponse = Schema.Schema.Type<typeof ApiResponse>;
+export type ApiError = Schema.Schema.Type<typeof ApiError>;
+export type ApiPostResponse = Schema.Schema.Type<typeof ApiPostResponse>;
 
 export const TwitterTokenResponseSchema = Schema.Struct({
   token_type: Schema.Literal("bearer"),
@@ -47,6 +64,13 @@ export const TwitterTokenResponseSchema = Schema.Struct({
 export type TwitterTokenResponse = Schema.Schema.Type<
   typeof TwitterTokenResponseSchema
 >;
+
+export const SavePostRequest = Schema.Struct({
+  userId: Schema.String,
+  text: Schema.String,
+})
+
+export type SavePostRequest = Schema.Schema.Type<typeof SavePostRequest>;
 
 export const ApiTweetPostRequest = Schema.Struct({
   text: Schema.String,
