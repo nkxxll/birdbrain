@@ -38,8 +38,6 @@ const sessionCookieDefaults = {
   secure: true, // only sent over HTTPS
   sameSite: "lax" as const, // CSRF protection but still works for most logins
   priority: "high" as const, // browsers send this cookie earlier under pressure
-  // domain: undefined      // let browser set to current domain (recommended unless multi-subdomain)
-  // expires or maxAge: set depending on session strategy
 };
 
 const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
@@ -56,15 +54,13 @@ const TWITTER_REDIRECT_URL = "http://localhost:3000/oauth/twitter";
  * @returns An Effect that resolves to the generated session ID string on success,
  * or an Error on failure.
  */
-function generateSessionId(
+function generateRandomBytes(
   length: number = 32
-): Effect.Effect<string, Error, never> {
+): Effect.Effect<Buffer<ArrayBufferLike>, Error, never> {
   return Effect.async((resume) =>
     randomBytes(length, (err, buf) => {
       if (err === null) {
-        var sessionId = buf.toString("base64");
-
-        return resume(Effect.succeed(sessionId));
+        return resume(Effect.succeed(buf));
       } else {
         resume(Effect.fail(err));
       }
@@ -84,34 +80,7 @@ function getAuthParams(url: string): {
   };
 }
 
-const redirect_to_auth = (client_id: string) =>
-  Effect.sync(() => {
-    const rootUrl = "https://twitter.com/i/oauth2/authorize";
-    const options = {
-      redirect_uri: "http://localhost:3000/oauth/twitter",
-      client_id: client_id,
-      state: "state",
-      response_type: "code",
-      code_challenge: "y_SfRG4BmOES02uqWeIkIgLQAlTBggyf_G7uKT51ku8",
-      code_challenge_method: "S256",
-      scope: [
-        "users.email",
-        "users.read",
-        "tweet.write",
-        "tweet.read",
-        "follows.read",
-        "follows.write",
-      ].join(" "), // add/remove scopes as needed
-    };
-    const qs = new URLSearchParams(options).toString();
-    return `${rootUrl}?${qs}`;
-  });
-
-const composed = Effect.gen(function* () {
-  const config = yield* AppConfig;
-  const url = yield* redirect_to_auth(config.clientId);
-  return HttpServerResponse.redirect(url.toString());
-});
+const redirectToAuth = (client_id: string) => Effect.sync(() => {});
 
 const makeTweetPostRequest = (text: string, authToken: string) =>
   Effect.gen(function* () {
@@ -208,7 +177,8 @@ const router = HttpRouter.empty.pipe(
 
         const tokenResponse = yield* makeAuthRequest(authRequest);
 
-        const sessionId = yield* generateSessionId();
+        const random = yield* generateRandomBytes();
+        const sessionId = random.toString("base64");
 
         yield* Ref.update(sessions, (state) =>
           HashMap.set(state, sessionId, tokenResponse)
@@ -224,7 +194,32 @@ const router = HttpRouter.empty.pipe(
       })
     )
   ),
-  HttpRouter.get("/login", composed),
+  HttpRouter.get(
+    "/login",
+    Effect.gen(function* () {
+      const config = yield* AppConfig;
+      const rootUrl = "https://twitter.com/i/oauth2/authorize";
+      const options = {
+        redirect_uri: TWITTER_REDIRECT_URL,
+        client_id: config.clientId,
+        state: "state",
+        response_type: "code",
+        code_challenge: "y_SfRG4BmOES02uqWeIkIgLQAlTBggyf_G7uKT51ku8",
+        code_challenge_method: "S256",
+        scope: [
+          "users.email",
+          "users.read",
+          "tweet.write",
+          "tweet.read",
+          "follows.read",
+          "follows.write",
+        ].join(" "), // add/remove scopes as needed
+      };
+      const qs = new URLSearchParams(options).toString();
+      const url = `${rootUrl}?${qs}`;
+      return HttpServerResponse.redirect(url);
+    })
+  ),
   HttpRouter.post(
     "/tweet",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
@@ -268,6 +263,7 @@ const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 const listenEffect = listen(
   // provide the pretty logger here so that we make pretty logs with the Effect.log* functions
   app.pipe(
+    Layer.provide(AppConfig.Default),
     Layer.provide(SessionStore.Default),
     Layer.provide(Logger.pretty),
     Layer.provide(FetchHttpClient.layer)

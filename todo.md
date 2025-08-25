@@ -5,15 +5,11 @@
   - [ ] application
   - [ ] navigation bar
   - [ ] style: vercel shadcn white on black no rounded corners
-- [ ] provide config as layer
-- [ ] sqlite database layer
+- [x] provide config as layer
+- [x] sqlite database layer
 - [ ] sqlite saving of future (not sent) posts
 - [ ] endpoint for looking up stats of a post and saving the stats of a post with the post in the db
-
-## effect
-
-I have the server as the starting point of my app as a BunRuntime.runMain. I should have no
-Effect runSync inside that I guess I don't know.
-My effects already have deps that I could want to mock out. I need to create a layer that takes
-the app or the app has to take a deps layer I am not quite sure here. But for now if it works it
-works and we will adapt while going along with it.
+- [ ] make real crypto for the oauth flow
+- [ ] create the session id at login and adjust the session data adding a verifier the verifier
+      should be deleted after use
+- [ ] full session management solution somehow
