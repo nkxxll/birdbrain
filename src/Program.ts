@@ -17,7 +17,6 @@ import {
   Logger,
   Option,
   Schema,
-  Config,
   Effect,
   Redacted,
   Layer,
@@ -31,7 +30,7 @@ import {
   ApiTweetPostRequest,
   TwitterTokenResponseSchema,
 } from "./Models.js";
-import { SessionStore } from "./Services.js";
+import { AppConfig, SessionStore } from "./Services.js";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -45,11 +44,7 @@ const sessionCookieDefaults = {
 
 const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
-const TWITTER_CLIENT_SECRET = Config.redacted(
-  Config.string("TWITTER_CLIENT_SECRET")
-);
-const TWITTER_CLIENT_ID = Config.string("TWITTER_CLIENT_ID");
-const CONFIG_APP_URL = Config.string("APP_URL");
+const TWITTER_REDIRECT_URL = "http://localhost:3000/oauth/twitter";
 
 /**
  * Generates a cryptographically secure random session ID using an Effect.
@@ -113,8 +108,8 @@ const redirect_to_auth = (client_id: string) =>
   });
 
 const composed = Effect.gen(function* () {
-  const id = yield* TWITTER_CLIENT_ID;
-  const url = yield* redirect_to_auth(id);
+  const config = yield* AppConfig;
+  const url = yield* redirect_to_auth(config.clientId);
   return HttpServerResponse.redirect(url.toString());
 });
 
@@ -139,13 +134,14 @@ const makeTweetPostRequest = (text: string, authToken: string) =>
 
 const makeAuthRequest = (url: string | URL) =>
   Effect.gen(function* () {
+    const config = yield* AppConfig;
     const client = yield* HttpClient.HttpClient;
 
-    const id = yield* TWITTER_CLIENT_ID;
-    const secret = yield* TWITTER_CLIENT_SECRET;
-
     const req = HttpClientRequest.post(url).pipe(
-      HttpClientRequest.basicAuth(id, Redacted.value(secret))
+      HttpClientRequest.basicAuth(
+        config.clientId,
+        Redacted.value(config.clientSecret)
+      )
     );
 
     const response = yield* client.execute(req);
@@ -189,6 +185,7 @@ const router = HttpRouter.empty.pipe(
     "/oauth/twitter",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
       Effect.gen(function* () {
+        const config = yield* AppConfig;
         const sessions = yield* SessionStore;
         const { state, code } = getAuthParams(
           "http://localhost:3000" + request.url
@@ -198,15 +195,13 @@ const router = HttpRouter.empty.pipe(
           throw new ParseError({ message: "query parse error" });
         }
 
-        const client_id = yield* TWITTER_CLIENT_ID;
-
         const authRequest = Url.setUrlParams(
           new URL(TWITTER_OAUTH_TOKEN_URL),
           UrlParams.fromInput([
             ["code", code],
-            ["client_id", client_id],
+            ["client_id", config.clientId],
             ["code_verifier", "8KxxO-RPl0bLSxX5AWwgdiFbMnry_VOKzFeIlVA7NoA"],
-            ["redirect_uri", `http://localhost:3000/oauth/twitter`],
+            ["redirect_uri", TWITTER_REDIRECT_URL],
             ["grant_type", "authorization_code"],
           ])
         );
@@ -219,7 +214,7 @@ const router = HttpRouter.empty.pipe(
           HashMap.set(state, sessionId, tokenResponse)
         );
 
-        return yield* HttpServerResponse.redirect("/").pipe(
+        return yield* HttpServerResponse.redirect(config.appUrl).pipe(
           HttpServerResponse.setCookie(
             "sessionId",
             sessionId,

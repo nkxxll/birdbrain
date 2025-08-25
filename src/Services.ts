@@ -1,4 +1,4 @@
-import { HashMap, Ref, Effect } from "effect";
+import { HashMap, Ref, Effect, Config } from "effect";
 import { TwitterTokenResponse } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
 
@@ -33,3 +33,18 @@ export class SQLiteService extends Effect.Service<SQLiteService>()(
     }),
   }
 ) {}
+
+export class AppConfig extends Effect.Service<AppConfig>()("AppConfig", {
+  effect: Effect.gen(function* () {
+    const clientSecret = yield* Config.redacted(
+      Config.string("TWITTER_CLIENT_SECRET")
+    );
+    const clientId = yield* Config.string("TWITTER_CLIENT_ID");
+    const appUrl = yield* Config.string("APP_URL");
+    return {
+      clientSecret,
+      clientId,
+      appUrl,
+    };
+  }),
+}) {}
