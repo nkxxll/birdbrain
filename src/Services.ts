@@ -1,14 +1,15 @@
-import { HashMap, Ref, Effect, Config, ConfigError } from "effect";
-import {
-  DatabaseError,
-  TwitterTokenResponse,
-} from "./Models.js";
+import { HashMap, Ref, Effect, Config, ConfigError, Context } from "effect";
+import { DatabaseError, SessionStoreItem } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
+
+export class SessionStoreItemService extends Context.Tag(
+  "SessionStoreItemService"
+)<SessionStoreItemService, SessionStoreItem>() {}
 
 export class SessionStore extends Effect.Service<SessionStore>()(
   "SessionStore",
   {
-    effect: Ref.make(HashMap.empty<string, TwitterTokenResponse>()),
+    effect: Ref.make(HashMap.empty<string, SessionStoreItem>()),
   }
 ) {}
 

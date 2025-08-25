@@ -1,4 +1,4 @@
-import { Effect, Schedule } from "effect";
+import { Effect } from "effect";
 import { randomBytes } from "crypto";
 
 export function generateRandomBytes(

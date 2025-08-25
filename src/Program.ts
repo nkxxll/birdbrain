@@ -29,13 +29,14 @@ import {
   ApiTweetPostRequest,
   ApiUserDataResponse,
   SavePostRequest,
-  SessionToken,
+  SessionStoreItem,
   TwitterTokenResponseSchema,
   UserData,
 } from "./Models.js";
 import {
   AppConfig,
   SessionStore,
+  SessionStoreItemService,
   SQLiteService,
   VerifierStore,
 } from "./Services.js";
@@ -122,15 +123,12 @@ const makeAuthRequest = (url: string | URL) =>
     return tokenResponse;
   }).pipe(Effect.provide(FetchHttpClient.layer));
 
-const savePost = (savePostRequest: SavePostRequest) =>
+const savePost = (userId: string, text: string) =>
   Effect.gen(function* () {
     const { query, exec } = yield* SQLiteService;
     const sql = `INSERT OR IGNORE INTO posts (user_id, content) VALUES (?1, ?2);`;
 
-    const res = yield* exec(sql, [
-      savePostRequest.userId,
-      savePostRequest.text,
-    ]);
+    const res = yield* exec(sql, [userId, text]);
     yield* Effect.log(
       `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
     );
@@ -150,11 +148,19 @@ const makeUser = (userData: UserData) =>
     );
   });
 
-const queryPosts = (user: UserData) =>
+const queryPosts = (userId: string) =>
   Effect.gen(function* () {
     const { query, exec } = yield* SQLiteService;
     const sql = `SELECT * FROM posts WHERE user_id = ?1;`;
-    const res = yield* query(sql, [user.id]);
+    const res = yield* query(sql, [userId]);
+    return res;
+  });
+
+const queryUserData = (userId: string) =>
+  Effect.gen(function* () {
+    const { query, exec } = yield* SQLiteService;
+    const sql = `SELECT * FROM users WHERE id = ?1;`;
+    const [res] = yield* query(sql, [userId]);
     return res;
   });
 
@@ -162,19 +168,9 @@ const authenticatedRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     "/myuser",
     Effect.gen(function* () {
-      const sessionStore = yield* SessionStore;
-      const sessionCookie = yield* SessionToken;
-      const kv = yield* Ref.get(sessionStore);
+      const ssi = yield* SessionStoreItemService;
 
-      const tokenResponse = HashMap.get(kv, sessionCookie);
-      if (Option.isNone(tokenResponse)) {
-        return HttpServerResponse.text(
-          "The session token is in the store but there is not auth token",
-          { status: 500 }
-        );
-      }
-
-      const json = yield* makeUserDataRequest(tokenResponse.value.access_token);
+      const json = yield* queryUserData(ssi.userId);
 
       return yield* HttpServerResponse.json(json);
     })
@@ -182,33 +178,9 @@ const authenticatedRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     "/posts",
     Effect.gen(function* () {
-      const sessionStore = yield* SessionStore;
-      const sessionCookie = yield* SessionToken;
-      const kv = yield* Ref.get(sessionStore);
+      const ssi = yield* SessionStoreItemService;
 
-      const tokenResponse = HashMap.get(kv, sessionCookie);
-      if (Option.isNone(tokenResponse)) {
-        return HttpServerResponse.text(
-          "The session token is in the store but there is not auth token",
-          { status: 500 }
-        );
-      }
-
-      const json = yield* makeUserDataRequest(tokenResponse.value.access_token);
-      const data = yield* Schema.decodeUnknown(ApiUserDataResponse)(json);
-
-      if (data.errors) {
-        return yield* HttpServerResponse.json(data.errors, { status: 500 });
-      }
-
-      if (!data.data) {
-        return HttpServerResponse.text(
-          "There is no data in the user data response",
-          { status: 500 }
-        );
-      }
-
-      const posts = yield* queryPosts(data.data!);
+      const posts = yield* queryPosts(ssi.userId);
       return yield* HttpServerResponse.json(posts);
     })
   ),
@@ -216,13 +188,14 @@ const authenticatedRouter = HttpRouter.empty.pipe(
     "/savepost",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
       Effect.gen(function* () {
+        const ssi = yield* SessionStoreItemService;
         const json = yield* req.json;
 
-        const request: SavePostRequest = yield* Schema.decodeUnknown(
-          SavePostRequest
+        const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
+          ApiTweetPostRequest
         )(json);
 
-        yield* savePost(request);
+        yield* savePost(ssi.userId, request.text);
         return HttpServerResponse.text("Successfully saved!", { status: 201 });
       })
     )
@@ -231,18 +204,7 @@ const authenticatedRouter = HttpRouter.empty.pipe(
     "/tweet",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
       Effect.gen(function* () {
-        const sessionStore = yield* SessionStore;
-        const sessionCookie = yield* SessionToken;
-        const kv = yield* Ref.get(sessionStore);
-
-        const tokenResponse = HashMap.get(kv, sessionCookie);
-        if (Option.isNone(tokenResponse)) {
-          return HttpServerResponse.text(
-            "The session token is in the store but there is not auth token",
-            { status: 500 }
-          );
-        }
-
+        const ssi = yield* SessionStoreItemService;
         const json = yield* req.json;
 
         yield* Effect.log(`Json from the client:\n${JSON.stringify(json)}`);
@@ -252,7 +214,7 @@ const authenticatedRouter = HttpRouter.empty.pipe(
 
         const apiResponse = yield* makeTweetPostRequest(
           request.text,
-          tokenResponse.value.access_token
+          ssi.tokenResponse.access_token
         );
 
         return yield* HttpServerResponse.json(JSON.stringify(apiResponse));
@@ -276,14 +238,14 @@ const router = HttpRouter.empty.pipe(
             'no session id Welcome login buddy <a href="/login">login</a>'
           );
         }
-        const tokenResponse = HashMap.get(kv, sessionId.value);
+        const ssi = HashMap.get(kv, sessionId.value);
 
         return HttpServerResponse.text(
           JSON.stringify(
-            Option.isNone(tokenResponse)
+            Option.isNone(ssi)
               ? "no token res for this ession"
               : Schema.encodeSync(TwitterTokenResponseSchema)(
-                  tokenResponse.value
+                  ssi.value.tokenResponse
                 )
           )
         );
@@ -339,10 +301,6 @@ const router = HttpRouter.empty.pipe(
         const random = yield* generateRandomBytes();
         const sessionId = random.toString("base64");
 
-        yield* Ref.update(sessionStore, (state) =>
-          HashMap.set(state, sessionId, tokenResponse)
-        );
-
         // create the user in the database if the user does not exist
         const userRes = yield* makeUserDataRequest(tokenResponse.access_token);
         yield* Effect.log(JSON.stringify(userRes));
@@ -356,7 +314,14 @@ const router = HttpRouter.empty.pipe(
             { status: 500 }
           );
         }
+
         yield* makeUser(data.data!);
+        yield* Ref.update(sessionStore, (state) =>
+          HashMap.set(state, sessionId, {
+            userId: data.data!.id,
+            tokenResponse,
+          })
+        );
 
         return yield* HttpServerResponse.redirect(config.appUrl).pipe(
           HttpServerResponse.setCookie(
@@ -380,11 +345,8 @@ const router = HttpRouter.empty.pipe(
       const randomVerifier = yield* generateRandomBytes();
       const randomVerifierBase = randomVerifier.toString("base64");
       const challengeHash = yield* Effect.tryPromise({
-        // The 'try' key holds a function that returns the Promise.
         try: () =>
           crypto.subtle.digest("SHA-256", Buffer.from(randomVerifierBase)),
-        // The 'catch' key is a function that transforms the Promise rejection
-        // into an Effect failure.
         catch: (err) =>
           new Error("Failed to create SHA-256 digest", { cause: err }),
       });
@@ -409,6 +371,7 @@ const router = HttpRouter.empty.pipe(
           "tweet.read",
           "follows.read",
           "follows.write",
+          "offline.access",
         ].join(" "), // add/remove scopes as needed
       };
       const qs = new URLSearchParams(options).toString();

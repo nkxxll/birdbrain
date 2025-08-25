@@ -4,8 +4,8 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "@effect/platform";
-import { SessionStore } from "./Services.js";
-import { SessionToken, SessionTokenNotFound } from "./Models.js";
+import { SessionStore, SessionStoreItemService } from "./Services.js";
+import { SessionTokenNotFound } from "./Models.js";
 
 export const SessionTokenMiddleware = HttpMiddleware.make((app) =>
   Effect.gen(function* () {
@@ -22,8 +22,10 @@ export const SessionTokenMiddleware = HttpMiddleware.make((app) =>
       return yield* Effect.fail(new SessionTokenNotFound({}));
     }
 
+    const ssi = yield* HashMap.get(kv, sessionId.value)
+
     return yield* app.pipe(
-      Effect.provideService(SessionToken, sessionId.value)
+      Effect.provideService(SessionStoreItemService, ssi)
     );
   }).pipe(
     Effect.catchTag("SessionTokenNotFound", () =>

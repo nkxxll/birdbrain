@@ -1,13 +1,6 @@
-import { Context, Data, Schema } from "effect";
+import { Data, Schema } from "effect";
 
-export class SessionToken extends Context.Tag("SessionToken")<
-  SessionToken,
-  string
->() {}
-
-export class DatabaseError extends Data.TaggedError(
-  "SessionTokenNotFound"
-)<{
+export class DatabaseError extends Data.TaggedError("SessionTokenNotFound")<{
   message?: string;
   cause?: unknown;
 }> {}
@@ -58,6 +51,7 @@ export const TwitterTokenResponseSchema = Schema.Struct({
   token_type: Schema.Literal("bearer"),
   expires_in: Schema.Number,
   access_token: Schema.String,
+  refresh_token: Schema.String,
   scope: Schema.String,
 });
 
@@ -65,10 +59,17 @@ export type TwitterTokenResponse = Schema.Schema.Type<
   typeof TwitterTokenResponseSchema
 >;
 
+export const SessionStoreItem = Schema.Struct({
+  tokenResponse: TwitterTokenResponseSchema,
+  userId: Schema.String,
+});
+
+export type SessionStoreItem = Schema.Schema.Type<typeof SessionStoreItem>;
+
 export const SavePostRequest = Schema.Struct({
   userId: Schema.String,
   text: Schema.String,
-})
+});
 
 export type SavePostRequest = Schema.Schema.Type<typeof SavePostRequest>;
 
