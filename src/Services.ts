@@ -1,7 +1,6 @@
-import { HashMap, Ref, Effect, Config, ConfigError, Context } from "effect";
+import { HashMap, Ref, Effect, Config, ConfigError, Option } from "effect";
 import { TwitterTokenResponse } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
-import { HttpLayerRouter } from "@effect/platform";
 
 export class SessionStore extends Effect.Service<SessionStore>()(
   "SessionStore",
@@ -68,27 +67,3 @@ export class CryptoService extends Effect.Service<CryptoService>()(
     }),
   }
 ) {}
-
-// https://github.com/Effect-TS/effect/blob/main/packages/platform/README.md#applying-middleware
-// Here is a service that we want to provide to every HTTP request
-class CurrentSession extends Context.Tag("CurrentSession")<
-  CurrentSession,
-  {
-    readonly token: string;
-  }
->() {}
-
-// Using the `HttpLayerRouter.middleware` function, we can create a middleware
-// that provides the `CurrentSession` service to every HTTP request.
-export const SessionMiddleware = HttpLayerRouter.middleware<{
-  provides: CurrentSession;
-}>()(
-  Effect.gen(function* () {
-    yield* Effect.log("SessionMiddleware initialized");
-
-    return (httpEffect) =>
-      Effect.provideService(httpEffect, CurrentSession, {
-        token: "dummy-token",
-      });
-  })
-);

@@ -24,13 +24,14 @@ import {
   HashMap,
 } from "effect";
 import { ParseError } from "effect/Cron";
-import { randomBytes } from "crypto";
 import {
   ApiResponse,
   ApiTweetPostRequest,
   TwitterTokenResponseSchema,
 } from "./Models.js";
 import { AppConfig, SessionStore } from "./Services.js";
+import { generateRandomBytes } from "./Utils.js";
+import { SessionTokenMiddleware } from "./Middleware.js";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -44,30 +45,6 @@ const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const TWITTER_REDIRECT_URL = "http://localhost:3000/oauth/twitter";
 
-/**
- * Generates a cryptographically secure random session ID using an Effect.
- * The ID is a base64-encoded string, which is safe for use in URLs and cookies.
- *
- * @param length The length of the random bytes to generate. A higher value
- * increases security. 32 bytes (44 characters in base64) is a
- * common and secure choice.
- * @returns An Effect that resolves to the generated session ID string on success,
- * or an Error on failure.
- */
-function generateRandomBytes(
-  length: number = 32
-): Effect.Effect<Buffer<ArrayBufferLike>, Error, never> {
-  return Effect.async((resume) =>
-    randomBytes(length, (err, buf) => {
-      if (err === null) {
-        return resume(Effect.succeed(buf));
-      } else {
-        resume(Effect.fail(err));
-      }
-    })
-  );
-}
-
 function getAuthParams(url: string): {
   state: string | undefined;
   code: string | undefined;
@@ -79,8 +56,6 @@ function getAuthParams(url: string): {
     code: params.get("code") ?? undefined,
   };
 }
-
-const redirectToAuth = (client_id: string) => Effect.sync(() => {});
 
 const makeTweetPostRequest = (text: string, authToken: string) =>
   Effect.gen(function* () {
@@ -123,7 +98,48 @@ const makeAuthRequest = (url: string | URL) =>
     return tokenResponse;
   }).pipe(Effect.provide(FetchHttpClient.layer));
 
+const authenticatedRouter = HttpRouter.empty.pipe(
+  HttpRouter.post(
+    "/tweet",
+    Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
+      Effect.gen(function* () {
+        // NOTE you could pack this cookies session id thing into a either or with either http.res not token not found or auth_token
+        const session = yield* SessionStore;
+        const sessionId = Option.fromNullable(req.cookies["sessionId"]);
+        if (Option.isNone(sessionId)) {
+          return HttpServerResponse.html(
+            'no session id Welcome login buddy <a href="/login">login</a>'
+          );
+        }
+        const kv = yield* Ref.get(session);
+        const tokenResponse = HashMap.get(kv, sessionId.value);
+        if (Option.isNone(tokenResponse)) {
+          return HttpServerResponse.html(
+            'no session id found in session store... Welcome login buddy <a href="/login">login</a>'
+          );
+        }
+        // END NOTE
+        const json = yield* req.json;
+
+        yield* Effect.log(`Json from the client: ${json}`);
+        const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
+          ApiTweetPostRequest
+        )(json);
+
+        const apiResponse = yield* makeTweetPostRequest(
+          request.text,
+          tokenResponse.value.access_token
+        );
+
+        return yield* HttpServerResponse.json(JSON.stringify(apiResponse));
+      })
+    )
+  ),
+  HttpRouter.use(SessionTokenMiddleware)
+);
+
 const router = HttpRouter.empty.pipe(
+  HttpRouter.mount("/", authenticatedRouter),
   HttpRouter.get(
     "/",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
@@ -219,42 +235,6 @@ const router = HttpRouter.empty.pipe(
       const url = `${rootUrl}?${qs}`;
       return HttpServerResponse.redirect(url);
     })
-  ),
-  HttpRouter.post(
-    "/tweet",
-    Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
-      Effect.gen(function* () {
-        // NOTE you could pack this cookies session id thing into a either or with either http.res not token not found or auth_token
-        const session = yield* SessionStore;
-        const sessionId = Option.fromNullable(req.cookies["sessionId"]);
-        if (Option.isNone(sessionId)) {
-          return HttpServerResponse.html(
-            'no session id Welcome login buddy <a href="/login">login</a>'
-          );
-        }
-        const kv = yield* Ref.get(session);
-        const tokenResponse = HashMap.get(kv, sessionId.value);
-        if (Option.isNone(tokenResponse)) {
-          return HttpServerResponse.html(
-            'no session id found in session store... Welcome login buddy <a href="/login">login</a>'
-          );
-        }
-        // END NOTE
-        const json = yield* req.json;
-
-        yield* Effect.log(`Json from the client: ${json}`);
-        const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
-          ApiTweetPostRequest
-        )(json);
-
-        const apiResponse = yield* makeTweetPostRequest(
-          request.text,
-          tokenResponse.value.access_token
-        );
-
-        return yield* HttpServerResponse.json(JSON.stringify(apiResponse));
-      })
-    )
   )
 );
 

@@ -1,4 +1,16 @@
-import { Schema } from "effect";
+import { Context, Data, Schema } from "effect";
+
+export class SessionToken extends Context.Tag("SessionToken")<
+  SessionToken,
+  string
+>() {}
+
+export class SessionTokenNotFound extends Data.TaggedError(
+  "SessionTokenNotFound"
+)<{
+  message?: string;
+  cause?: unknown;
+}> {}
 
 export const PostApiData = Schema.Struct({
   text: Schema.String,
