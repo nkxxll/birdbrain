@@ -2,7 +2,7 @@ import { Effect, Schedule } from "effect";
 import { randomBytes } from "crypto";
 
 export function generateRandomBytes(
-  length: number = 32
+  length: number = 64
 ): Effect.Effect<Buffer, never, never> {
   // We use `Effect.async<A, E, R>` to wrap a Node.js callback-based function.
   // The `resume` function is called with either a success or a failure.

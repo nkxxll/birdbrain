@@ -27,9 +27,10 @@ import { ParseError } from "effect/Cron";
 import {
   ApiResponse,
   ApiTweetPostRequest,
+  SessionToken,
   TwitterTokenResponseSchema,
 } from "./Models.js";
-import { AppConfig, SessionStore } from "./Services.js";
+import { AppConfig, SessionStore, VerifierStore } from "./Services.js";
 import { generateRandomBytes } from "./Utils.js";
 import { SessionTokenMiddleware } from "./Middleware.js";
 
@@ -103,25 +104,21 @@ const authenticatedRouter = HttpRouter.empty.pipe(
     "/tweet",
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
       Effect.gen(function* () {
-        // NOTE you could pack this cookies session id thing into a either or with either http.res not token not found or auth_token
-        const session = yield* SessionStore;
-        const sessionId = Option.fromNullable(req.cookies["sessionId"]);
-        if (Option.isNone(sessionId)) {
-          return HttpServerResponse.html(
-            'no session id Welcome login buddy <a href="/login">login</a>'
-          );
-        }
-        const kv = yield* Ref.get(session);
-        const tokenResponse = HashMap.get(kv, sessionId.value);
+        const sessionStore = yield* SessionStore;
+        const sessionCookie = yield* SessionToken;
+        const kv = yield* Ref.get(sessionStore);
+
+        const tokenResponse = HashMap.get(kv, sessionCookie);
         if (Option.isNone(tokenResponse)) {
-          return HttpServerResponse.html(
-            'no session id found in session store... Welcome login buddy <a href="/login">login</a>'
+          return HttpServerResponse.text(
+            "The session token is in the store but there is not auth token",
+            { status: 500 }
           );
         }
-        // END NOTE
+
         const json = yield* req.json;
 
-        yield* Effect.log(`Json from the client: ${json}`);
+        yield* Effect.log(`Json from the client:\n${JSON.stringify(json)}`);
         const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
           ApiTweetPostRequest
         )(json);
@@ -171,7 +168,10 @@ const router = HttpRouter.empty.pipe(
     Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
       Effect.gen(function* () {
         const config = yield* AppConfig;
-        const sessions = yield* SessionStore;
+        const sessionStore = yield* SessionStore;
+        const verifierStore = yield* VerifierStore;
+        const vs = yield* Ref.get(verifierStore);
+
         const { state, code } = getAuthParams(
           "http://localhost:3000" + request.url
         );
@@ -180,15 +180,31 @@ const router = HttpRouter.empty.pipe(
           throw new ParseError({ message: "query parse error" });
         }
 
+        const baseVerifierOption = HashMap.get(vs, state);
+
+        if (Option.isNone(baseVerifierOption)) {
+          return HttpServerResponse.text(
+            "State and verifier could not be found in the verifier store!",
+            { status: 500 }
+          );
+        }
+
+        const verifier = baseVerifierOption.value;
+
         const authRequest = Url.setUrlParams(
           new URL(TWITTER_OAUTH_TOKEN_URL),
           UrlParams.fromInput([
             ["code", code],
             ["client_id", config.clientId],
-            ["code_verifier", "8KxxO-RPl0bLSxX5AWwgdiFbMnry_VOKzFeIlVA7NoA"],
+            ["code_verifier", verifier],
             ["redirect_uri", TWITTER_REDIRECT_URL],
             ["grant_type", "authorization_code"],
           ])
+        );
+
+        // Note: important remove the unique throw away verifier immediately
+        yield* Ref.update(verifierStore, (current) =>
+          HashMap.remove(current, state)
         );
 
         const tokenResponse = yield* makeAuthRequest(authRequest);
@@ -196,7 +212,7 @@ const router = HttpRouter.empty.pipe(
         const random = yield* generateRandomBytes();
         const sessionId = random.toString("base64");
 
-        yield* Ref.update(sessions, (state) =>
+        yield* Ref.update(sessionStore, (state) =>
           HashMap.set(state, sessionId, tokenResponse)
         );
 
@@ -214,13 +230,35 @@ const router = HttpRouter.empty.pipe(
     "/login",
     Effect.gen(function* () {
       const config = yield* AppConfig;
+      const verifierStore = yield* VerifierStore;
+
+      const randomState = yield* generateRandomBytes();
+      const state = randomState.toString("base64");
+
+      const randomVerifier = yield* generateRandomBytes();
+      const randomVerifierBase = randomVerifier.toString("base64");
+      const challengeHash = yield* Effect.tryPromise({
+        // The 'try' key holds a function that returns the Promise.
+        try: () =>
+          crypto.subtle.digest("SHA-256", Buffer.from(randomVerifierBase)),
+        // The 'catch' key is a function that transforms the Promise rejection
+        // into an Effect failure.
+        catch: (err) =>
+          new Error("Failed to create SHA-256 digest", { cause: err }),
+      });
+      const challenge = Buffer.from(challengeHash).toString("base64url");
+
+      yield* Ref.update(verifierStore, (current) =>
+        HashMap.set(current, state, randomVerifierBase)
+      );
+
       const rootUrl = "https://twitter.com/i/oauth2/authorize";
       const options = {
         redirect_uri: TWITTER_REDIRECT_URL,
         client_id: config.clientId,
-        state: "state",
+        state,
         response_type: "code",
-        code_challenge: "y_SfRG4BmOES02uqWeIkIgLQAlTBggyf_G7uKT51ku8",
+        code_challenge: challenge,
         code_challenge_method: "S256",
         scope: [
           "users.email",
@@ -241,10 +279,10 @@ const router = HttpRouter.empty.pipe(
 const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 
 const listenEffect = listen(
-  // provide the pretty logger here so that we make pretty logs with the Effect.log* functions
   app.pipe(
     Layer.provide(AppConfig.Default),
     Layer.provide(SessionStore.Default),
+    Layer.provide(VerifierStore.Default),
     Layer.provide(Logger.pretty),
     Layer.provide(FetchHttpClient.layer)
   ),

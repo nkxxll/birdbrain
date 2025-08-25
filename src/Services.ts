@@ -1,4 +1,4 @@
-import { HashMap, Ref, Effect, Config, ConfigError, Option } from "effect";
+import { HashMap, Ref, Effect, Config, ConfigError } from "effect";
 import { TwitterTokenResponse } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
 
@@ -6,6 +6,17 @@ export class SessionStore extends Effect.Service<SessionStore>()(
   "SessionStore",
   {
     effect: Ref.make(HashMap.empty<string, TwitterTokenResponse>()),
+  }
+) {}
+
+/**
+ * Temporary store for the state: key and the value: verifier for the oauth flow
+ * Only used in "/login" and "/oauth/twitter" route
+ */
+export class VerifierStore extends Effect.Service<VerifierStore>()(
+  "VerifierStore",
+  {
+    effect: Ref.make(HashMap.empty<string, string>()),
   }
 ) {}
 
