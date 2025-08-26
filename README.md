@@ -15,21 +15,22 @@ creative spree you can pre-write the messages and also send them on demand.
 
 - [x] make a webserver with effect
 - [x] send a message to the twitter api
-- [ ] create messages and save them in the database
+- [x] create messages and save them in the database
 - [ ] send the first/random message in the message list on a schedule
 - [ ] send the progress on the next scheduled message
 - [ ] save the messages sent and not sent in a SQLite database for later reference with the message
       id
   - [x] sql service
-  - [ ] create the schema
-  - [ ] test the query and execute functionality
+  - [x] create the schema
+  - [x] test the query and execute functionality
 - [ ] read stats on an already send message
 
 ### Vite Frontend
 
-- [ ] proxy webserver in the frontend
-- [ ] list messages on the frontend
-- [ ] send messages on demand
+- [x] proxy webserver in the frontend
+- [x] list messages on the frontend
+- [x] send messages directly
+- [ ] send saved messages on demand
 - [ ] interact with the message list in a web interface (delete/sent/refresh/edit)
 - [ ] see the progress on the next scheduled message
 
