@@ -57,7 +57,9 @@ export class AppConfig extends Effect.Service<AppConfig>()("AppConfig", {
     );
     const clientId = yield* Config.string("TWITTER_CLIENT_ID");
     const appUrl = yield* Config.string("APP_URL");
+    const redirectUrl = yield* Config.string("REDIRECT_URL");
     return {
+      redirectUrl,
       clientSecret,
       clientId,
       appUrl,

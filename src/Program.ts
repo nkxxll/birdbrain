@@ -54,7 +54,6 @@ const sessionCookieDefaults = {
 const TWITTER_USER_ME_URL = "https://api.x.com/2/users/me";
 const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
-const TWITTER_REDIRECT_URL = "http://localhost:3000/oauth/twitter";
 
 function getAuthParams(url: string): {
   state: string | undefined;
@@ -286,7 +285,7 @@ const router = HttpRouter.empty.pipe(
             ["code", code],
             ["client_id", config.clientId],
             ["code_verifier", verifier],
-            ["redirect_uri", TWITTER_REDIRECT_URL],
+            ["redirect_uri", config.redirectUrl],
             ["grant_type", "authorization_code"],
           ])
         );
@@ -358,7 +357,7 @@ const router = HttpRouter.empty.pipe(
 
       const rootUrl = "https://twitter.com/i/oauth2/authorize";
       const options = {
-        redirect_uri: TWITTER_REDIRECT_URL,
+        redirect_uri: config.redirectUrl,
         client_id: config.clientId,
         state,
         response_type: "code",
@@ -392,7 +391,7 @@ const listenEffect = listen(
     Layer.provide(Logger.pretty),
     Layer.provide(FetchHttpClient.layer)
   ),
-  3000
+  3001
 );
 
 const cronEffect = cron();
