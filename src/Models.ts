@@ -75,6 +75,7 @@ export type SavePostRequest = Schema.Schema.Type<typeof SavePostRequest>;
 
 export const ApiTweetPostRequest = Schema.Struct({
   text: Schema.String,
+  id: Schema.Number.pipe(Schema.optional)
 });
 
 export type ApiTweetPostRequest = Schema.Schema.Type<

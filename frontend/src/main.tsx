@@ -19,6 +19,7 @@ import reportWebVitals from "./reportWebVitals.ts";
 import App from "./App.tsx";
 import Dashboard from "./components/Dashboard.tsx";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
+import { Toaster } from "react-hot-toast";
 
 const rootRoute = createRootRoute({
 	component: () => (
@@ -27,6 +28,7 @@ const rootRoute = createRootRoute({
 				<Header>
 					<Outlet />
 					<TanStackRouterDevtools />
+					<Toaster position="bottom-center" reverseOrder={false} />
 				</Header>
 			</ThemeProvider>
 		</>

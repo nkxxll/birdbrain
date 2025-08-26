@@ -2,9 +2,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { savePost, fetchPosts, tweetPost } from "@/lib/api";
+import type { ApiError, UserHandle } from "@/lib/models";
+import { useRouter } from "@tanstack/react-router";
+import { toast } from "react-hot-toast";
+import { useMemo, useState } from "react";
+import PostCard from "./PostCard";
+import { TWITTER_HANELE_COMPLETIONS } from "@/lib/completion_list";
 
 // Main component for the site
 export default function App() {
@@ -20,45 +25,79 @@ export default function App() {
 			queryClient.invalidateQueries({ queryKey: ["posts"] });
 			setNewPostContent(""); // Clear the textarea after successful post
 		},
-		onError: (err) => {
-			console.error("Failed to post:", err);
+		onError: (err: ApiError) => {
+			if (err.status && err.status === 401) {
+				const router = useRouter();
+				toast.error(`${err.message}\nYou might need to login first!`);
+				router.navigate({ to: "/" });
+			}
 		},
 	});
 
 	const tweetPostMutation = useMutation({
-		mutationFn: async (text: string) => {
-			// Send the tweet first
-			await tweetPost(text);
-			// Then save the post
-			await savePost(text);
+		mutationFn: async ({ text, id }: { text: string; id?: number }) => {
+			await tweetPost(text, id);
 		},
 		onSuccess: () => {
-			// Invalidate the 'posts' query to refetch the data and update the list
+			toast.success("Post was sent successfully!");
 			queryClient.invalidateQueries({ queryKey: ["posts"] });
-			setNewPostContent(""); // Clear the textarea after successful post
+			setNewPostContent("");
 		},
-		onError: (err) => {
-			console.error("Failed to post:", err);
+		onError: (err: ApiError) => {
+			if (err.status && err.status === 401) {
+				const router = useRouter();
+				toast.error(`${err.message}\nYou might need to login first!`);
+				router.navigate({ to: "/" });
+			}
 		},
 	});
 
 	const { data, isError, isLoading, error } = useQuery({
 		queryKey: ["posts"],
 		queryFn: fetchPosts,
+		retry: false,
 	});
 
 	const [newPostContent, setNewPostContent] = useState("");
 	const maxCharacters = 280;
+	const [suggestions, setSuggestions] = useState<UserHandle[]>([]);
+  const limitedSuggestions = useMemo(() => {
+    return suggestions.length > 5 ? suggestions.slice(0, 5) : suggestions;
+  }, [suggestions]);
 
-	// Function to handle character limit and update content
 	const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const text = e.target.value;
 		if (text.length <= maxCharacters) {
 			setNewPostContent(text);
 		}
+
+		const textarea = e.target;
+		const cursorPos = textarea.selectionStart;
+		const textBeforeCursor = textarea.value.substring(0, cursorPos);
+		const words = textBeforeCursor.split(/\s+/);
+		const lastWord = words[words.length - 1];
+
+		setSuggestions([]);
+
+		if (lastWord.startsWith("@")) {
+			const query = lastWord.substring(1).toLowerCase();
+			const matches = TWITTER_HANELE_COMPLETIONS.filter(
+				(user) =>
+					user.handle.toLowerCase().startsWith("@" + query) ||
+					user.username.toLowerCase().startsWith(query),
+			);
+			setSuggestions(matches);
+		}
 	};
 
-	if (isError) return "error..." + error;
+	if (isError) {
+		const apiError = error as ApiError;
+		if (apiError.status && apiError.status === 401) {
+			const router = useRouter();
+			toast.error(`${apiError.message}\nYou might need to login first!`);
+			router.navigate({ to: "/" });
+		}
+	}
 	if (isLoading) return "loading...";
 
 	return (
@@ -77,13 +116,51 @@ export default function App() {
 							placeholder="What's on your mind? (280 characters max)"
 							value={newPostContent}
 							onChange={handleTextareaChange}
+							onKeyDown={(e) => {
+								if (e.code === "Enter" && suggestions.length > 0) {
+									const suggestion = suggestions[0];
+									setNewPostContent((content) => {
+										const words = content.split(/\s+/);
+										const lastIndex = content.lastIndexOf(
+											words[words.length - 1],
+										);
+										return content.slice(0, lastIndex) + suggestion.handle;
+									});
+									e.preventDefault();
+								}
+							}}
 						/>
+						<div id="suggestions" className="grid grid-cols-3 gap-2">
+							{suggestions.length > 0 &&
+								limitedSuggestions?.map((suggestion) => {
+									return (
+										<Button variant={"outline"}
+                      className="p-4 text-xs"
+											onClick={() => {
+												setNewPostContent((content) => {
+													const words = content.split(/\s+/);
+													const lastIndex = content.lastIndexOf(
+														words[words.length - 1],
+													);
+													return (
+														content.slice(0, lastIndex) + suggestion.handle
+													);
+												});
+											}}
+										>
+											{suggestion.username} <br /> {suggestion.handle}
+										</Button>
+									);
+								})}
+						</div>
 						<div className="text-right text-sm text-muted-foreground mb-4">
 							{newPostContent.length}/{maxCharacters}
 						</div>
 						<div className="flex flex-row gap-2">
 							<Button
-								onClick={() => tweetPostMutation.mutate(newPostContent)}
+								onClick={() =>
+									tweetPostMutation.mutate({ text: newPostContent })
+								}
 								className="grow"
 								disabled={newPostContent.trim().length === 0}
 							>
@@ -112,16 +189,7 @@ export default function App() {
 					<ScrollArea className="h-[calc(100vh-150px)]">
 						<div className="space-y-4 pr-4">
 							{data?.map((post) => (
-								<Card key={post.id} className="p-4 rounded-xl shadow-md">
-									<CardContent className="p-0">
-										<p className="text-lg text-gray-800 dark:text-gray-200 leading-relaxed">
-											{post.content}
-										</p>
-										<p className="text-sm text-gray-500 mt-2 text-right">
-											{post.created_at}
-										</p>
-									</CardContent>
-								</Card>
+								<PostCard post={post} postMutation={tweetPostMutation} />
 							))}
 						</div>
 					</ScrollArea>

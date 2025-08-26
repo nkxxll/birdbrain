@@ -5,12 +5,14 @@
   - [x] application
   - [-] navigation bar
   - [x] style: vercel shadcn white on black no rounded corners
-  - [ ] login button
-  - [ ] redirect to login when getting a 401
-  - [ ] ui show sent messages as grayed out
-  - [ ] be able to send posts directly with the was_sent flag set already
+  - [x] login button
+  - [-] redirect to login when getting a 401
+    - [ ] does not redirect on the mutations jet this is a todo
+    - [x] does redirect on the query though
+  - [x] ui show sent messages as grayed out
+  - [x] be able to send posts directly with the was_sent flag set already
   - [ ] delete posts
-  - [ ] copy posts text
+  - [x] copy posts text
   - [ ] be able to save @ users or something like this just a better editing experience when
   writing a post
   - [ ] emojis?!

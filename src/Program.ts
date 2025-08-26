@@ -28,8 +28,6 @@ import {
   ApiPostResponse,
   ApiTweetPostRequest,
   ApiUserDataResponse,
-  SavePostRequest,
-  SessionStoreItem,
   TwitterTokenResponseSchema,
   UserData,
 } from "./Models.js";
@@ -67,16 +65,30 @@ function getAuthParams(url: string): {
   };
 }
 
-const makeTweetPostRequest = (text: string, authToken: string) =>
+const setSent = (postId: number) =>
+  Effect.gen(function* () {
+    const { query, exec } = yield* SQLiteService;
+    const sql = `UPDATE posts SET was_sent = 1 WHERE id = ?1;`;
+
+    const res = yield* exec(sql, [postId]);
+    yield* Effect.log(
+      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
+    );
+  });
+
+const makeTweetPostRequest = (
+  request: ApiTweetPostRequest,
+  accessToken: string
+) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
 
-    const body: ApiTweetPostRequest = {
-      text: text,
+    const body = {
+      text: request.text,
     };
 
     const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
-      HttpClientRequest.bearerToken(authToken),
+      HttpClientRequest.bearerToken(accessToken),
       HttpClientRequest.setBody(
         HttpBody.text(JSON.stringify(body), "application/json")
       )
@@ -131,7 +143,9 @@ const savePost = (userId: string, text: string) =>
     yield* Effect.log(
       `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
     );
+    return res;
   });
+
 const makeUser = (userData: UserData) =>
   Effect.gen(function* () {
     const { query, exec } = yield* SQLiteService;
@@ -211,10 +225,22 @@ const authenticatedRouter = HttpRouter.empty.pipe(
           ApiTweetPostRequest
         )(json);
 
+        let id = request.id;
+        if (!request.id) {
+          const res = yield* savePost(ssi.userId, request.text);
+          id = res.lastInsertRowid as number;
+        }
+
         const apiResponse = yield* makeTweetPostRequest(
-          request.text,
+          request,
           ssi.tokenResponse.access_token
         );
+
+        if (request.id) {
+          yield* setSent(request.id);
+        } else {
+          yield* setSent(id!);
+        }
 
         return yield* HttpServerResponse.json(JSON.stringify(apiResponse));
       })
