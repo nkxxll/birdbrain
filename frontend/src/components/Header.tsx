@@ -10,6 +10,12 @@ export default function Header({ children }: { children: ReactNode }) {
 					<div className="px-2 font-bold">
 						<Link to="/">Home</Link>
 					</div>
+					<div className="px-2 font-bold">
+						<a to="/api/login">Login</a>
+					</div>
+					<div className="px-2 font-bold">
+						<Link to="/logout">Logout</Link>
+					</div>
 
 					<ThemeToggle />
 				</nav>
