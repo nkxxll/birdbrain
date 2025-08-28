@@ -41,7 +41,6 @@ import {
 } from "./Services.js";
 import { generateRandomBytes } from "./Utils.js";
 import { SessionTokenMiddleware } from "./Middleware.js";
-import { Session } from "inspector";
 
 const sessionCookieDefaults = {
 	path: "/", // available everywhere
@@ -219,7 +218,6 @@ const authenticatedRouter = HttpRouter.empty.pipe(
 			return HttpServerResponse.text(newToken);
 		}),
 	),
-
 	HttpRouter.get(
 		"/myuser",
 		Effect.gen(function* () {

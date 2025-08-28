@@ -5,7 +5,7 @@ export class DatabaseError extends Data.TaggedError("SessionTokenNotFound")<{
   cause?: unknown;
 }> {}
 
-export class RefreshError extends Data.TaggedError("SessionTokenNotFound")<{
+export class RefreshError extends Data.TaggedError("RefreshError")<{
   message?: string;
   cause?: unknown;
 }> {}
