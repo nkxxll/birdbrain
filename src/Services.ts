@@ -1,4 +1,12 @@
-import { HashMap, Ref, Effect, Config, ConfigError, Context } from "effect";
+import {
+  HashMap,
+  Ref,
+  Effect,
+  Config,
+  ConfigError,
+  Context,
+  Option,
+} from "effect";
 import { DatabaseError, SessionStoreItem } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
 
@@ -21,6 +29,89 @@ export class VerifierStore extends Effect.Service<VerifierStore>()(
   "VerifierStore",
   {
     effect: Ref.make(HashMap.empty<string, string>()),
+  }
+) {}
+
+/**
+ * Temporary store for the state: key and the value: verifier for the oauth flow
+ * Only used in "/login" and "/oauth/twitter" route
+ */
+export class WebSocketService extends Effect.Service<WebSocketService>()(
+  "WebSocketService",
+  {
+    effect: Effect.gen(function* () {
+      const sessionStore = yield* SessionStore;
+      const kv = yield* Ref.get(sessionStore);
+      const server = Bun.serve<{ sessionId: string }, {}>({
+        fetch(req, server) {
+          const cookies = new Bun.CookieMap(req.headers.get("cookie")!);
+          const sessionId = cookies.get("sessionId");
+          if (sessionId === null) {
+            return new Response("authentication required", { status: 401 });
+          }
+          const ssi = HashMap.get(kv, sessionId);
+          if (Option.isNone(ssi)) {
+            return new Response("authentication required", { status: 401 });
+          }
+          if (
+            server.upgrade(req, {
+              data: {
+                sessionId,
+              },
+            })
+          ) {
+            return;
+          }
+
+          return new Response("Could not upgrade to ws", {
+            status: 500,
+          });
+        },
+        websocket: {
+          open(ws) {
+            ws.subscribe(ws.data.sessionId);
+          },
+          message() {},
+          close() {},
+        },
+      });
+
+      const publish = (message: string, sessionId: string) =>
+        Effect.gen(function* () {
+          const bytes = server.publish(sessionId, message);
+          if (bytes === 0 || bytes === -1) {
+            yield* Effect.logWarning("Websocket message could not be sent");
+          }
+        });
+
+      return {
+        publish,
+      };
+    }),
+  }
+) {}
+
+export class ProgressService extends Effect.Service<ProgressService>()(
+  "ProgressService",
+  {
+    effect: Effect.gen(function* () {
+      const progress = yield* Ref.make(0);
+      const updateProgress = () =>
+        Effect.gen(function* () {
+          yield* Ref.update(progress, (current) => (current + 10) % 100);
+          const currentProgress = yield* Ref.get(progress);
+          return currentProgress;
+        });
+      const getProgress = () =>
+        Effect.gen(function* () {
+          const currentProgress = yield* Ref.get(progress);
+          return currentProgress;
+        });
+      return {
+        updateProgress,
+        getProgress,
+      };
+    }),
   }
 ) {}
 

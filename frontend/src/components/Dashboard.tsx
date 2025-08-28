@@ -189,7 +189,7 @@ export default function App() {
 					<ScrollArea className="h-[calc(100vh-150px)]">
 						<div className="space-y-4 pr-4">
 							{data?.map((post) => (
-								<PostCard post={post} postMutation={tweetPostMutation} />
+								<PostCard key={post.id} post={post} postMutation={tweetPostMutation} />
 							))}
 						</div>
 					</ScrollArea>

@@ -10,7 +10,6 @@ export class RefreshError extends Data.TaggedError("RefreshError")<{
   cause?: unknown;
 }> {}
 
-
 export class SessionTokenNotFound extends Data.TaggedError(
   "SessionTokenNotFound"
 )<{
@@ -68,6 +67,7 @@ export type TwitterTokenResponse = Schema.Schema.Type<
 export const SessionStoreItem = Schema.Struct({
   tokenResponse: TwitterTokenResponseSchema,
   userId: Schema.String,
+  progress: Schema.Number,
 });
 
 export type SessionStoreItem = Schema.Schema.Type<typeof SessionStoreItem>;
@@ -81,7 +81,7 @@ export type SavePostRequest = Schema.Schema.Type<typeof SavePostRequest>;
 
 export const ApiTweetPostRequest = Schema.Struct({
   text: Schema.String,
-  id: Schema.Number.pipe(Schema.optional)
+  id: Schema.Number.pipe(Schema.optional),
 });
 
 export type ApiTweetPostRequest = Schema.Schema.Type<

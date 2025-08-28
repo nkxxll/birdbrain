@@ -20,6 +20,7 @@ import App from "./App.tsx";
 import Dashboard from "./components/Dashboard.tsx";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
 import { Toaster } from "react-hot-toast";
+import Logout from "./components/Logout.tsx";
 
 const rootRoute = createRootRoute({
 	component: () => (
