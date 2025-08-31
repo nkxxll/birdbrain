@@ -6,42 +6,40 @@ import {
   HttpServerRequest,
   UrlParams,
   Url,
-  HttpClient,
-  FetchHttpClient,
-  HttpClientRequest,
-  HttpBody,
-  HttpClientResponse,
 } from "@effect/platform";
 import { listen, main } from "./Compose.js";
-import { progress } from "./Cron.js";
+import { ProgressLayer } from "./Cron.js";
+import { Logger, Option, Schema, Effect, Layer, Ref, HashMap } from "effect";
 import {
-  Logger,
-  Option,
-  Schema,
-  Effect,
-  Redacted,
-  Layer,
-  Ref,
-  HashMap,
-} from "effect";
-import { ParseError } from "effect/Cron";
-import {
-  ApiPostResponse,
   ApiTweetPostRequest,
   ApiUserDataResponse,
-  RefreshError,
+  SessionTokenNotFound,
   TwitterTokenResponseSchema,
-  UserData,
 } from "./Models.js";
 import {
   AppConfig,
+  ProgressService,
   SessionStore,
   SessionStoreItemService,
-  SQLiteService,
   VerifierStore,
 } from "./Services.js";
-import { generateRandomBytes } from "./Utils.js";
+import {
+  generateRandomBytes,
+  getAuthParams,
+  makeAuthRequest,
+  makeTweetPostRequest,
+  makeUser,
+  makeUserDataRequest,
+  queryPosts,
+  queryUserData,
+  savePost,
+  sendRandomPost,
+  setSent,
+} from "./Utils.js";
 import { SessionTokenMiddleware } from "./Middleware.js";
+import { TWITTER_OAUTH_TOKEN_URL } from "./Contants.js";
+import { RequestError, ResponseError } from "@effect/platform/HttpClientError";
+import { ParseError } from "effect/ParseResult";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -51,182 +49,46 @@ const sessionCookieDefaults = {
   priority: "high" as const, // browsers send this cookie earlier under pressure
 };
 
-const TWITTER_USER_ME_URL = "https://api.x.com/2/users/me";
-const TWITTER_TWEET_MANAGE_URL = "https://api.x.com/2/tweets";
-const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
-
-function refreshAuthToken() {
-  return Effect.gen(function* () {
-    const req = yield* HttpServerRequest.HttpServerRequest;
-    const sessionStore = yield* SessionStore;
-    const ssi = yield* SessionStoreItemService;
-    const config = yield* AppConfig;
-    const sessionId = Option.fromNullable(req.cookies["sessionId"]);
-
-    if (Option.isNone(sessionId)) {
-      throw new RefreshError({ message: "Session ID has to be here by now" });
-    }
-
-    const authRequest = Url.setUrlParams(
-      new URL(TWITTER_OAUTH_TOKEN_URL),
-      UrlParams.fromInput([
-        ["refresh_token", ssi.tokenResponse.refresh_token],
-        ["client_id", config.clientId],
-        ["grant_type", "refresh_token"],
-      ])
-    );
-    const newTokenResponse = yield* makeAuthRequest(authRequest);
-    yield* Ref.update(
-      sessionStore,
-      HashMap.set(sessionId.value, {
-        ...ssi,
-        tokenResponse: newTokenResponse,
-      })
-    );
-
-    return newTokenResponse.access_token;
-  });
-}
-
-function getAuthParams(url: string): {
-  state: string | undefined;
-  code: string | undefined;
-} {
-  const params = new URL(url).searchParams;
-
-  return {
-    state: params.get("state") ?? undefined,
-    code: params.get("code") ?? undefined,
-  };
-}
-
-const setSent = (postId: number) =>
-  Effect.gen(function* () {
-    const { query, exec } = yield* SQLiteService;
-    const sql = `UPDATE posts SET was_sent = 1 WHERE id = ?1;`;
-
-    const res = yield* exec(sql, [postId]);
-    yield* Effect.log(
-      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
-    );
-  });
-
-const makeTweetPostRequest = (
-  request: ApiTweetPostRequest,
-  accessToken: string
-) =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient;
-
-    const body = {
-      text: request.text,
-    };
-
-    const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
-      HttpClientRequest.bearerToken(accessToken),
-      HttpClientRequest.setBody(
-        HttpBody.text(JSON.stringify(body), "application/json")
-      )
-    );
-    let postResponse = yield* client.execute(req);
-
-    // try refresh if the auth token is expired
-    const status = postResponse.status;
-    if (status === 401) {
-      yield* Effect.log("Try to refresh token");
-      const accessToken = yield* refreshAuthToken();
-      const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
-        HttpClientRequest.bearerToken(accessToken),
-        HttpClientRequest.setBody(
-          HttpBody.text(JSON.stringify(body), "application/json")
-        )
-      );
-      postResponse = yield* client.execute(req);
-    }
-
-    return yield* HttpClientResponse.schemaBodyJson(ApiPostResponse)(
-      postResponse
-    );
-  });
-
-const makeUserDataRequest = (authToken: string) =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient;
-
-    const req = HttpClientRequest.get(TWITTER_USER_ME_URL).pipe(
-      HttpClientRequest.bearerToken(authToken)
-    );
-    const postResponse = yield* client.execute(req);
-
-    return yield* postResponse.json;
-  });
-
-const makeAuthRequest = (url: string | URL) =>
-  Effect.gen(function* () {
-    const config = yield* AppConfig;
-    const client = yield* HttpClient.HttpClient;
-
-    const req = HttpClientRequest.post(url).pipe(
-      HttpClientRequest.basicAuth(
-        config.clientId,
-        Redacted.value(config.clientSecret)
-      )
-    );
-
-    const response = yield* client.execute(req);
-
-    const json = yield* response.json;
-
-    const tokenResponse = yield* Schema.decodeUnknown(
-      TwitterTokenResponseSchema
-    )(json);
-    return tokenResponse;
-  }).pipe(Effect.provide(FetchHttpClient.layer));
-
-const savePost = (userId: string, text: string) =>
-  Effect.gen(function* () {
-    const { query, exec } = yield* SQLiteService;
-    const sql = `INSERT OR IGNORE INTO posts (user_id, content) VALUES (?1, ?2);`;
-
-    const res = yield* exec(sql, [userId, text]);
-    yield* Effect.log(
-      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
-    );
-    return res;
-  });
-
-const makeUser = (userData: UserData) =>
-  Effect.gen(function* () {
-    const { query, exec } = yield* SQLiteService;
-    const sql = `INSERT OR IGNORE INTO users (id, username, name) VALUES (?1, ?2, ?3);`;
-
-    const res = yield* exec(sql, [
-      userData.id,
-      userData.username,
-      userData.name,
-    ]);
-    yield* Effect.log(
-      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
-    );
-  });
-
-const queryPosts = (userId: string) =>
-  Effect.gen(function* () {
-    const { query, exec } = yield* SQLiteService;
-    const sql = `SELECT * FROM posts WHERE user_id = ?1;`;
-    const res = yield* query(sql, [userId]);
-    return res;
-  });
-
-const queryUserData = (userId: string) =>
-  Effect.gen(function* () {
-    const { query, exec } = yield* SQLiteService;
-    const sql = `SELECT * FROM users WHERE id = ?1;`;
-    const [res] = yield* query(sql, [userId]);
-    return res;
-  });
-
 const authenticatedRouter = HttpRouter.empty.pipe(
+  HttpRouter.get(
+    "/sendrandom",
+    Effect.gen(function* () {
+      const req = yield* HttpServerRequest.HttpServerRequest;
+      const sessionId = Option.fromNullable(req.cookies["sessionId"]);
+      if (Option.isNone(sessionId)) {
+        return HttpServerResponse.text("should be here", { status: 500 });
+      }
+      const postRes = yield* sendRandomPost(sessionId.value);
+
+      return yield* HttpServerResponse.json(postRes);
+    })
+  ),
+  HttpRouter.get(
+    "/pollprogress",
+    Effect.gen(function* () {
+      const req = yield* HttpServerRequest.HttpServerRequest;
+      const sessionId = Option.fromNullable(req.cookies["sessionId"]);
+      const ps = yield* ProgressService;
+      if (Option.isNone(sessionId)) {
+        return HttpServerResponse.text(
+          "Server error session id should be here",
+          { status: 500 }
+        );
+      }
+
+      const kv = yield* Ref.get(ps);
+      yield* Effect.log(kv);
+      const progress = HashMap.get(kv, sessionId.value);
+      if (Option.isNone(progress)) {
+        return HttpServerResponse.text(
+          "Progress should be present here because you are logged in!",
+          { status: 500 }
+        );
+      }
+
+      return yield* HttpServerResponse.json({ progress: progress.value });
+    })
+  ),
   HttpRouter.get(
     "/logout",
     Effect.gen(function* () {
@@ -242,13 +104,6 @@ const authenticatedRouter = HttpRouter.empty.pipe(
       }
       yield* Ref.update(sessions, HashMap.remove(sessionId.value));
       return HttpServerResponse.redirect(`${config.appUrl}/logout`);
-    })
-  ),
-  HttpRouter.get(
-    "/refresh",
-    Effect.gen(function* () {
-      const newToken = yield* refreshAuthToken();
-      return HttpServerResponse.text(newToken);
     })
   ),
   HttpRouter.get(
@@ -293,6 +148,15 @@ const authenticatedRouter = HttpRouter.empty.pipe(
         const ssi = yield* SessionStoreItemService;
         const json = yield* req.json;
 
+        const sessionId = Option.fromNullable(req.cookies["sessionId"]);
+
+        if (Option.isNone(sessionId)) {
+          return HttpServerResponse.text(
+            "The session id has to be set at this point",
+            { status: 500 }
+          );
+        }
+
         yield* Effect.log(`Json from the client:\n${JSON.stringify(json)}`);
         const request: ApiTweetPostRequest = yield* Schema.decodeUnknown(
           ApiTweetPostRequest
@@ -306,6 +170,7 @@ const authenticatedRouter = HttpRouter.empty.pipe(
 
         const apiResponse = yield* makeTweetPostRequest(
           request,
+          sessionId.value,
           ssi.tokenResponse.access_token
         );
 
@@ -357,6 +222,7 @@ const router = HttpRouter.empty.pipe(
         const config = yield* AppConfig;
         const sessionStore = yield* SessionStore;
         const verifierStore = yield* VerifierStore;
+        const ps = yield* ProgressService;
         const vs = yield* Ref.get(verifierStore);
 
         const { state, code } = getAuthParams(
@@ -364,7 +230,7 @@ const router = HttpRouter.empty.pipe(
         );
 
         if (state === undefined || code === undefined) {
-          throw new ParseError({ message: "query parse error" });
+          throw new Error("could not parse request parameters");
         }
 
         const baseVerifierOption = HashMap.get(vs, state);
@@ -419,6 +285,7 @@ const router = HttpRouter.empty.pipe(
             tokenResponse,
           })
         );
+        yield* Ref.update(ps, HashMap.set(sessionId, 0));
 
         return yield* HttpServerResponse.redirect(config.appUrl).pipe(
           HttpServerResponse.setCookie(
@@ -479,17 +346,29 @@ const router = HttpRouter.empty.pipe(
 const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 
 const listenEffect = listen(
-  app.pipe(
-    Layer.provide(AppConfig.Default),
-    Layer.provide(SessionStore.Default),
-    Layer.provide(VerifierStore.Default),
-    Layer.provide(SQLiteService.Default),
-    Layer.provide(Logger.pretty),
-    Layer.provide(FetchHttpClient.layer)
-  ),
+  app.pipe(Layer.provide(VerifierStore.Default), Layer.provide(Logger.pretty)),
   3001
 );
 
-const cronEffect = progress();
+const cronEffect = Layer.launch(ProgressLayer.Default).pipe(
+  Effect.catchTags({
+    SessionTokenNotFound: (e: SessionTokenNotFound) =>
+      Effect.logError(
+        `Session token not found error: ${e.message}\nCause: ${e.cause}`
+      ),
+    RequestError: (e: RequestError) =>
+      Effect.logError(
+        `RequestError not found error: ${e.message}\nCause: ${e.cause}`
+      ),
+    ResponseError: (e: ResponseError) =>
+      Effect.logError(
+        `ResponseError not found error: ${e.message}\nCause: ${e.cause}`
+      ),
+    ParseError: (e: ParseError) =>
+      Effect.logError(
+        `ResponseError not found error: ${e.message}\nCause: ${e.cause}`
+      ),
+  })
+);
 
 main(listenEffect, cronEffect);

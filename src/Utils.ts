@@ -1,17 +1,41 @@
-import { Effect } from "effect";
+import { Effect, Schema, Option, Ref, HashMap, Redacted } from "effect";
 import { randomBytes } from "crypto";
+import {
+  AppConfig,
+  SessionStore,
+  SessionStoreItemService,
+  SQLiteService,
+} from "./Services.js";
+import {
+  ApiPostResponse,
+  ApiTweetPostRequest,
+  Post,
+  RefreshError,
+  TwitterTokenResponseSchema,
+  UserData,
+} from "./Models.js";
+import {
+  FetchHttpClient,
+  HttpBody,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+  HttpServerRequest,
+  Url,
+  UrlParams,
+} from "@effect/platform";
+import {
+  TWITTER_OAUTH_TOKEN_URL,
+  TWITTER_TWEET_MANAGE_URL,
+  TWITTER_USER_ME_URL,
+} from "./Contants.js";
 
 export function generateRandomBytes(
   length: number = 64
 ): Effect.Effect<Buffer, never, never> {
-  // We use `Effect.async<A, E, R>` to wrap a Node.js callback-based function.
-  // The `resume` function is called with either a success or a failure.
   return Effect.async((resume) => {
     randomBytes(length, (err, buf) => {
       if (err) {
-        // This is a critical, unrecoverable failure. A lack of entropy
-        // or a crypto engine failure means the environment is compromised.
-        // We use `resume(Effect.die(...))` to signal this fatal error.
         resume(
           Effect.die(
             new Error("Cryptographic random bytes generation failed.", {
@@ -20,10 +44,220 @@ export function generateRandomBytes(
           )
         );
       } else {
-        // The operation was successful.
-        // We use `resume(Effect.succeed(...))` to return the result.
         resume(Effect.succeed(buf));
       }
     });
   });
 }
+
+export const sendRandomPost = (sessionId: string) =>
+  Effect.gen(function* () {
+    yield* Effect.log("start the sending of a random message");
+    const sessionStore = yield* SessionStore;
+    const db = yield* SQLiteService;
+    yield* Effect.log("we have the session store and the db");
+    const kv = yield* Ref.get(sessionStore);
+    yield* Effect.log("we have the actual store" + kv);
+    const ssi = HashMap.get(kv, sessionId);
+    yield* Effect.log("we have the ssi" + ssi);
+
+    if (Option.isNone(ssi)) {
+      throw new Error("Session store item for this session id should be found");
+    }
+    yield* Effect.log("We have a session");
+
+    const sql = `SELECT * FROM posts WHERE user_id = ?1 AND was_sent = 0 ORDER BY RANDOM() LIMIT 1`;
+    const [tweetUnknown] = yield* db.query(sql, [ssi.value.userId]);
+
+    const tweet = yield* Schema.decodeUnknown(Post)(tweetUnknown);
+    yield* Effect.log("We have a post");
+
+    const res = yield* makeTweetPostRequest(
+      { text: tweet.content },
+      sessionId,
+      ssi.value.tokenResponse.access_token
+    );
+
+    yield* Effect.log("The post was sent");
+
+    yield* setSent(tweet.id);
+
+    yield* Effect.log("the post was set to sent");
+
+    const postRes = yield* Schema.decodeUnknown(ApiPostResponse)(res);
+
+    yield* Effect.log("we have a post response");
+
+    return postRes;
+  });
+
+export const makeTweetPostRequest = (
+  request: ApiTweetPostRequest,
+  sessionId: string,
+  accessToken: string
+) =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+
+    const body = {
+      text: request.text,
+    };
+
+    const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
+      HttpClientRequest.bearerToken(accessToken),
+      HttpClientRequest.setBody(
+        HttpBody.text(JSON.stringify(body), "application/json")
+      )
+    );
+    let postResponse = yield* client.execute(req);
+
+    // try refresh if the auth token is expired
+    const status = postResponse.status;
+    if (status === 401) {
+      yield* Effect.log("Try to refresh token");
+      const accessToken = yield* refreshAuthToken(sessionId);
+      const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
+        HttpClientRequest.bearerToken(accessToken),
+        HttpClientRequest.setBody(
+          HttpBody.text(JSON.stringify(body), "application/json")
+        )
+      );
+      postResponse = yield* client.execute(req);
+    }
+
+    return yield* HttpClientResponse.schemaBodyJson(ApiPostResponse)(
+      postResponse
+    );
+  });
+
+export function refreshAuthToken(sessionId: string) {
+  return Effect.gen(function* () {
+    const sessionStore = yield* SessionStore;
+    const kv = yield* Ref.get(sessionStore);
+    const ssi = HashMap.get(kv, sessionId);
+    const config = yield* AppConfig;
+
+    if (Option.isNone(ssi)) {
+      throw new RefreshError({ message: "session store item should be found" });
+    }
+
+    const authRequest = Url.setUrlParams(
+      new URL(TWITTER_OAUTH_TOKEN_URL),
+      UrlParams.fromInput([
+        ["refresh_token", ssi.value.tokenResponse.refresh_token],
+        ["client_id", config.clientId],
+        ["grant_type", "refresh_token"],
+      ])
+    );
+    const newTokenResponse = yield* makeAuthRequest(authRequest);
+    yield* Ref.update(
+      sessionStore,
+      HashMap.set(sessionId, {
+        ...ssi.value,
+        tokenResponse: newTokenResponse,
+      })
+    );
+
+    return newTokenResponse.access_token;
+  });
+}
+
+export function getAuthParams(url: string): {
+  state: string | undefined;
+  code: string | undefined;
+} {
+  const params = new URL(url).searchParams;
+
+  return {
+    state: params.get("state") ?? undefined,
+    code: params.get("code") ?? undefined,
+  };
+}
+
+export const setSent = (postId: number) =>
+  Effect.gen(function* () {
+    const db = yield* SQLiteService;
+    const sql = `UPDATE posts SET was_sent = 1 WHERE id = ?1;`;
+
+    const res = yield* db.exec(sql, [postId]);
+    yield* Effect.log(
+      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
+    );
+  });
+
+export const makeUserDataRequest = (authToken: string) =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+
+    const req = HttpClientRequest.get(TWITTER_USER_ME_URL).pipe(
+      HttpClientRequest.bearerToken(authToken)
+    );
+    const postResponse = yield* client.execute(req);
+
+    return yield* postResponse.json;
+  });
+
+export const makeAuthRequest = (url: string | URL) =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig;
+    const client = yield* HttpClient.HttpClient;
+
+    const req = HttpClientRequest.post(url).pipe(
+      HttpClientRequest.basicAuth(
+        config.clientId,
+        Redacted.value(config.clientSecret)
+      )
+    );
+
+    const response = yield* client.execute(req);
+
+    const json = yield* response.json;
+
+    const tokenResponse = yield* Schema.decodeUnknown(
+      TwitterTokenResponseSchema
+    )(json);
+    return tokenResponse;
+  }).pipe(Effect.provide(FetchHttpClient.layer));
+
+export const savePost = (userId: string, text: string) =>
+  Effect.gen(function* () {
+    const db = yield* SQLiteService;
+    const sql = `INSERT OR IGNORE INTO posts (user_id, content) VALUES (?1, ?2);`;
+
+    const res = yield* db.exec(sql, [userId, text]);
+    yield* Effect.log(
+      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
+    );
+    return res;
+  });
+
+export const makeUser = (userData: UserData) =>
+  Effect.gen(function* () {
+    const db = yield* SQLiteService;
+    const sql = `INSERT OR IGNORE INTO users (id, username, name) VALUES (?1, ?2, ?3);`;
+
+    const res = yield* db.exec(sql, [
+      userData.id,
+      userData.username,
+      userData.name,
+    ]);
+    yield* Effect.log(
+      `Changes to the database: ${res.changes}; Row id: ${res.lastInsertRowid}`
+    );
+  });
+
+export const queryPosts = (userId: string) =>
+  Effect.gen(function* () {
+    const db = yield* SQLiteService;
+    const sql = `SELECT * FROM posts WHERE user_id = ?1;`;
+    const res = yield* db.query(sql, [userId]);
+    return res;
+  });
+
+export const queryUserData = (userId: string) =>
+  Effect.gen(function* () {
+    const db = yield* SQLiteService;
+    const sql = `SELECT * FROM users WHERE id = ?1;`;
+    const [res] = yield* db.query(sql, [userId]);
+    return res;
+  });

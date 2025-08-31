@@ -60,6 +60,14 @@ export const TwitterTokenResponseSchema = Schema.Struct({
   scope: Schema.String,
 });
 
+export const Post = Schema.Struct({
+  id: Schema.Number,
+  user_id: Schema.String,
+  content: Schema.String,
+  created_at: Schema.String,
+  was_sent: Schema.Number,
+});
+
 export type TwitterTokenResponse = Schema.Schema.Type<
   typeof TwitterTokenResponseSchema
 >;
@@ -67,7 +75,6 @@ export type TwitterTokenResponse = Schema.Schema.Type<
 export const SessionStoreItem = Schema.Struct({
   tokenResponse: TwitterTokenResponseSchema,
   userId: Schema.String,
-  progress: Schema.Number,
 });
 
 export type SessionStoreItem = Schema.Schema.Type<typeof SessionStoreItem>;

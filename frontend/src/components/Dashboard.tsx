@@ -3,13 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { savePost, fetchPosts, tweetPost } from "@/lib/api";
+import { savePost, fetchPosts, tweetPost, pollProgress } from "@/lib/api";
 import type { ApiError, UserHandle } from "@/lib/models";
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "react-hot-toast";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PostCard from "./PostCard";
 import { TWITTER_HANELE_COMPLETIONS } from "@/lib/completion_list";
+import { Progress } from "./ui/progress";
 
 // Main component for the site
 export default function App() {
@@ -52,6 +53,40 @@ export default function App() {
 		},
 	});
 
+	const [progress, setProgress] = useState(0);
+	const lastProgress = useRef<number>(0);
+
+	const pollProgressMutation = useMutation({
+		mutationFn: pollProgress,
+		onSuccess: (data: number) => {
+			console.log(
+				data,
+				lastProgress.current,
+				data === 0 && lastProgress.current === 90,
+			);
+			if (data === 0 && lastProgress.current === 90) {
+				toast.success("Send new post randomly");
+				queryClient.invalidateQueries({ queryKey: ["posts"] });
+			}
+			lastProgress.current = data;
+			setProgress(data);
+		},
+		onError: (err: ApiError) => {
+			if (err.status && err.status === 401) {
+				const router = useRouter();
+				toast.error(`${err.message}\nYou might need to login first!`);
+				router.navigate({ to: "/" });
+			}
+		},
+	});
+
+	useEffect(() => {
+		const interval = setInterval(() => {
+			pollProgressMutation.mutate();
+		}, 1000); // 1 min
+		return () => clearInterval(interval);
+	}, []);
+
 	const { data, isError, isLoading, error } = useQuery({
 		queryKey: ["posts"],
 		queryFn: fetchPosts,
@@ -61,9 +96,9 @@ export default function App() {
 	const [newPostContent, setNewPostContent] = useState("");
 	const maxCharacters = 280;
 	const [suggestions, setSuggestions] = useState<UserHandle[]>([]);
-  const limitedSuggestions = useMemo(() => {
-    return suggestions.length > 5 ? suggestions.slice(0, 5) : suggestions;
-  }, [suggestions]);
+	const limitedSuggestions = useMemo(() => {
+		return suggestions.length > 5 ? suggestions.slice(0, 5) : suggestions;
+	}, [suggestions]);
 
 	const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const text = e.target.value;
@@ -134,8 +169,9 @@ export default function App() {
 							{suggestions.length > 0 &&
 								limitedSuggestions?.map((suggestion) => {
 									return (
-										<Button variant={"outline"}
-                      className="p-4 text-xs"
+										<Button
+											variant={"outline"}
+											className="p-4 text-xs"
 											onClick={() => {
 												setNewPostContent((content) => {
 													const words = content.split(/\s+/);
@@ -179,17 +215,24 @@ export default function App() {
 			</div>
 
 			{/* Right column: List of posts */}
-			<div className="col-span-1 md:col-span-2 p-4">
-				<h2 className="text-2xl font-bold mb-4">Recent Posts</h2>
+			<div className="flex flex-col col-span-1 md:col-span-2 p-4">
+				<h2 className="text-2xl font-bold">Recent Posts</h2>
+				<div className="p-4">
+					<Progress value={progress} />
+				</div>
 				{data?.length === 0 ? (
 					<p className="text-gray-500 text-center mt-10">
 						No posts yet. Start by writing one!
 					</p>
 				) : (
-					<ScrollArea className="h-[calc(100vh-150px)]">
+					<ScrollArea className="grow h-[calc(100vh-150px)]">
 						<div className="space-y-4 pr-4">
 							{data?.map((post) => (
-								<PostCard key={post.id} post={post} postMutation={tweetPostMutation} />
+								<PostCard
+									key={post.id}
+									post={post}
+									postMutation={tweetPostMutation}
+								/>
 							))}
 						</div>
 					</ScrollArea>

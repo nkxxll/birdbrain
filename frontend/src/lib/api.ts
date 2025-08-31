@@ -1,5 +1,20 @@
 import { ApiError, type Post } from "./models";
 
+export const pollProgress = async (): Promise<number> => {
+	const res = await fetch("/api/pollprogress").catch((err) => {
+		throw new ApiError(err);
+	});
+	if (!res.ok) {
+		throw new ApiError(new Error("Network response was not ok"), res.status);
+	}
+	const data = await res.json();
+	if (data.progress === undefined || typeof data.progress !== "number") {
+		throw new Error("should never happen data format is defined well");
+	}
+
+	return data.progress;
+};
+
 // Function to fetch posts from the API
 export const fetchPosts = async (): Promise<Post[]> => {
 	const res = await fetch("/api/posts").catch((err) => {
