@@ -13,6 +13,8 @@ import { Logger, Option, Schema, Effect, Layer, Ref, HashMap } from "effect";
 import {
   ApiTweetPostRequest,
   ApiUserDataResponse,
+  NoPostLeftError,
+  RefreshError,
   SessionTokenNotFound,
   TwitterTokenResponseSchema,
 } from "./Models.js";
@@ -230,7 +232,9 @@ const router = HttpRouter.empty.pipe(
         );
 
         if (state === undefined || code === undefined) {
-          throw new Error("could not parse request parameters");
+          return yield* Effect.fail(
+            new Error("could not parse request parameters")
+          );
         }
 
         const baseVerifierOption = HashMap.get(vs, state);
@@ -348,7 +352,7 @@ const app = router.pipe(HttpServer.serve(HttpMiddleware.logger));
 const listenEffect = listen(
   app.pipe(Layer.provide(VerifierStore.Default), Layer.provide(Logger.pretty)),
   3001
-);
+).pipe(Effect.annotateLogs({ scope: "server" }));
 
 const cronEffect = Layer.launch(ProgressLayer.Default).pipe(
   Effect.catchTags({
@@ -368,7 +372,12 @@ const cronEffect = Layer.launch(ProgressLayer.Default).pipe(
       Effect.logError(
         `ResponseError not found error: ${e.message}\nCause: ${e.cause}`
       ),
-  })
+    RefreshError: (e: RefreshError) =>
+      Effect.logError(`Error while refreshing ${e.message}\nCause: ${e.cause}`),
+    NoPostLeftError: (e: NoPostLeftError) =>
+      Effect.logWarning(`There is no post left to send message: ${e.message}`),
+  }),
+  Effect.annotateLogs({ scope: "cron" })
 );
 
 main(listenEffect, cronEffect);

@@ -8,7 +8,7 @@ export class ProgressLayer extends Effect.Service<ProgressLayer>()(
     effect: Effect.gen(function* () {
       yield* Effect.log("Starting cron...");
       const sendProgress = Effect.gen(function* () {
-        yield* Effect.log("[Cron]: Step itteration...");
+        yield* Effect.log("Step itteration...");
         const ps = yield* ProgressService;
         const kv = yield* Ref.get(ps);
         for (const key of HashMap.keys(kv)) {
@@ -32,7 +32,7 @@ export class ProgressLayer extends Effect.Service<ProgressLayer>()(
         return yield* Effect.void;
       });
 
-      const cron = Cron.unsafeParse("*/6 * * * * *");
+      const cron = Cron.unsafeParse("* 6 * * * *");
       const schedule = Schedule.cron(cron);
       return yield* Effect.repeat(sendProgress, schedule);
     }),

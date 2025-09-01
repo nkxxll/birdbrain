@@ -3,14 +3,15 @@ import { randomBytes } from "crypto";
 import {
   AppConfig,
   SessionStore,
-  SessionStoreItemService,
   SQLiteService,
 } from "./Services.js";
 import {
   ApiPostResponse,
   ApiTweetPostRequest,
+  NoPostLeftError,
   Post,
   RefreshError,
+  SessionTokenNotFound,
   TwitterTokenResponseSchema,
   UserData,
 } from "./Models.js";
@@ -20,7 +21,6 @@ import {
   HttpClient,
   HttpClientRequest,
   HttpClientResponse,
-  HttpServerRequest,
   Url,
   UrlParams,
 } from "@effect/platform";
@@ -52,25 +52,31 @@ export function generateRandomBytes(
 
 export const sendRandomPost = (sessionId: string) =>
   Effect.gen(function* () {
-    yield* Effect.log("start the sending of a random message");
     const sessionStore = yield* SessionStore;
     const db = yield* SQLiteService;
-    yield* Effect.log("we have the session store and the db");
     const kv = yield* Ref.get(sessionStore);
-    yield* Effect.log("we have the actual store" + kv);
     const ssi = HashMap.get(kv, sessionId);
-    yield* Effect.log("we have the ssi" + ssi);
 
     if (Option.isNone(ssi)) {
-      throw new Error("Session store item for this session id should be found");
+      return yield* Effect.fail(
+        new SessionTokenNotFound({
+          message: "Session store item for this session id should be found",
+        })
+      );
     }
-    yield* Effect.log("We have a session");
 
     const sql = `SELECT * FROM posts WHERE user_id = ?1 AND was_sent = 0 ORDER BY RANDOM() LIMIT 1`;
     const [tweetUnknown] = yield* db.query(sql, [ssi.value.userId]);
 
+    if (tweetUnknown === undefined) {
+      return yield* Effect.fail(
+        new NoPostLeftError({
+          message: "There is no random post left to post",
+        })
+      );
+    }
+
     const tweet = yield* Schema.decodeUnknown(Post)(tweetUnknown);
-    yield* Effect.log("We have a post");
 
     const res = yield* makeTweetPostRequest(
       { text: tweet.content },
@@ -138,7 +144,9 @@ export function refreshAuthToken(sessionId: string) {
     const config = yield* AppConfig;
 
     if (Option.isNone(ssi)) {
-      throw new RefreshError({ message: "session store item should be found" });
+      return yield* Effect.fail(
+        new RefreshError({ message: "session store item should be found" })
+      );
     }
 
     const authRequest = Url.setUrlParams(
