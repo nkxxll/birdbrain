@@ -1,10 +1,6 @@
 import { Effect, Schema, Option, Ref, HashMap, Redacted } from "effect";
 import { randomBytes } from "crypto";
-import {
-  AppConfig,
-  SessionStore,
-  SQLiteService,
-} from "./Services.js";
+import { AppConfig, SessionStore, SQLiteService } from "./Services.js";
 import {
   ApiPostResponse,
   ApiTweetPostRequest,
@@ -21,6 +17,7 @@ import {
   HttpClient,
   HttpClientRequest,
   HttpClientResponse,
+  HttpServerResponse,
   Url,
   UrlParams,
 } from "@effect/platform";
@@ -29,6 +26,7 @@ import {
   TWITTER_TWEET_MANAGE_URL,
   TWITTER_USER_ME_URL,
 } from "./Contants.js";
+import { post } from "@effect/platform/HttpClientRequest";
 
 export function generateRandomBytes(
   length: number = 64
@@ -111,15 +109,11 @@ export const makeTweetPostRequest = (
 
     const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
       HttpClientRequest.bearerToken(accessToken),
-      HttpClientRequest.setBody(
-        HttpBody.text(JSON.stringify(body), "application/json")
-      )
+      HttpClientRequest.setBody(yield* HttpBody.json(body))
     );
     let postResponse = yield* client.execute(req);
 
-    // try refresh if the auth token is expired
-    const status = postResponse.status;
-    if (status === 401) {
+    if (postResponse.status !== 201) {
       yield* Effect.log("Try to refresh token");
       const accessToken = yield* refreshAuthToken(sessionId);
       const req = HttpClientRequest.post(TWITTER_TWEET_MANAGE_URL).pipe(
@@ -129,7 +123,21 @@ export const makeTweetPostRequest = (
         )
       );
       postResponse = yield* client.execute(req);
+      if (postResponse.status !== 201) {
+        const json = yield* postResponse.json;
+        return yield* HttpServerResponse.json(json, {
+          status: postResponse.status,
+        });
+      }
     }
+
+    const jsonResUnknown = yield* postResponse.json;
+
+    const jsonRes = yield* Schema.decodeUnknown(ApiPostResponse)(
+      jsonResUnknown
+    );
+
+    yield* Effect.logInfo(`Post sent successfully response: ${jsonRes}`);
 
     return yield* HttpClientResponse.schemaBodyJson(ApiPostResponse)(
       postResponse

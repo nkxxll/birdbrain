@@ -36,6 +36,7 @@ import {
   makeUserDataRequest,
   queryPosts,
   queryUserData,
+  refreshAuthToken,
   savePost,
   sendRandomPost,
   setSent,
@@ -54,6 +55,27 @@ const sessionCookieDefaults = {
 };
 
 const authenticatedRouter = HttpRouter.empty.pipe(
+  HttpRouter.get(
+    "/refresh",
+    Effect.gen(function* () {
+      const req = yield* HttpServerRequest.HttpServerRequest;
+      const sessionIdOption = Option.fromNullable(req.cookies["sessionId"]);
+      if (Option.isNone(sessionIdOption)) {
+        return HttpServerResponse.text(
+          "should not happen should be logged in",
+          { status: 500 }
+        );
+      }
+
+      const res = yield* makeTweetPostRequest(
+        { text: "But if it works it is just one of the best feelings in the world!!!" },
+        sessionIdOption.value,
+        "hahaha this accestoken is trash"
+      );
+
+      return HttpServerResponse.text(JSON.stringify(res));
+    })
+  ),
   HttpRouter.del(
     "/delete/:id",
     Effect.gen(function* () {
