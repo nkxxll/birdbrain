@@ -60,3 +60,15 @@ export const tweetPost = async (text: string, id?: number) => {
 	}
 	return res.json();
 };
+
+export const deletePost = async (id: number) => {
+	const res = await fetch(`/api/delete/${id}`, {
+		method: "DELETE",
+	}).catch((err) => {
+		throw new ApiError(err);
+	});
+	if (!res.ok) {
+		throw new ApiError(new Error("Failed to delete tweet"), res.status);
+	}
+	return res;
+};

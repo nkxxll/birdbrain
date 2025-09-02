@@ -32,7 +32,7 @@ export class ProgressLayer extends Effect.Service<ProgressLayer>()(
         return yield* Effect.void;
       });
 
-      const cron = Cron.unsafeParse("* 6 * * * *");
+      const cron = Cron.unsafeParse("* */6 * * * *");
       const schedule = Schedule.cron(cron);
       return yield* Effect.repeat(sendProgress, schedule);
     }),

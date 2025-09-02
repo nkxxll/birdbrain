@@ -11,7 +11,7 @@ export default function Header({ children }: { children: ReactNode }) {
 						<Link to="/">Home</Link>
 					</div>
 					<div className="px-2 font-bold">
-						<a to="/api/login">Login</a>
+						<a href="/api/login">Login</a>
 					</div>
 					<div className="px-2 font-bold">
 						<Link to="/logout">Logout</Link>
@@ -20,7 +20,7 @@ export default function Header({ children }: { children: ReactNode }) {
 					<ThemeToggle />
 				</nav>
 			</header>
-      {children}
+			{children}
 		</div>
 	);
 }

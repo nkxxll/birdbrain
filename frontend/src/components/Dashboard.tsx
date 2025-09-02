@@ -7,7 +7,7 @@ import { savePost, fetchPosts, tweetPost, pollProgress } from "@/lib/api";
 import type { ApiError, UserHandle } from "@/lib/models";
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "react-hot-toast";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PostCard from "./PostCard";
 import { TWITTER_HANELE_COMPLETIONS } from "@/lib/completion_list";
 import { Progress } from "./ui/progress";

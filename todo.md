@@ -3,7 +3,7 @@
 - [ ] basic frontend
   - [x] landing page
   - [x] application
-  - [-] navigation bar
+  - [x] navigation bar
   - [x] style: vercel shadcn white on black no rounded corners
   - [x] login button
   - [-] redirect to login when getting a 401
@@ -14,8 +14,8 @@
   - [ ] delete posts
   - [x] copy posts text
   - [ ] be able to save @ users or something like this just a better editing experience when
-  writing a post
-  - [ ] emojis?!
+        writing a post
+  - [x] emojis?! omarchy does this
 - [x] provide config as layer
 - [x] sqlite database layer
 - [ ] delete posts that are saved and not sent
@@ -24,4 +24,9 @@
 - [x] make real crypto for the oauth flow
 - [x] full session management solution somehow
 - [x] reactive refresh token usage
-- [ ] scheduled sending of messages from the database
+- [x] scheduled sending of messages from the database
+- [ ] set up deployment
+  - [ ] ssh copy id to pi
+  - [ ] set up nginx server fully
+  - [ ] set up the backend as a systemctl service
+  - [ ] make script that updates the directories and restarts the nginx and the backend server

@@ -5,7 +5,6 @@ import {
   Config,
   ConfigError,
   Context,
-  Option,
 } from "effect";
 import { DatabaseError, SessionStoreItem } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";

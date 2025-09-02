@@ -1,9 +1,14 @@
 import type { ApiError, Post } from "@/lib/models.ts";
 import { Card, CardContent } from "./ui/card.tsx";
-import type { UseMutationResult } from "@tanstack/react-query";
+import {
+	useMutation,
+	useQueryClient,
+	type UseMutationResult,
+} from "@tanstack/react-query";
 import toast, { CheckmarkIcon } from "react-hot-toast";
 import { Copy } from "lucide-react";
 import { Button } from "./ui/button.tsx";
+import { deletePost } from "@/lib/api.ts";
 
 async function copyToClipboard(text: string) {
 	try {
@@ -28,6 +33,15 @@ export default function PostCard({
 		unknown
 	>;
 }) {
+	const queryClient = useQueryClient();
+	const deleteMutation = useMutation({
+		mutationFn: deletePost,
+		onSuccess: () => {
+			toast.success("Post was deleted successfully!");
+			queryClient.invalidateQueries({ queryKey: ["posts"] });
+		},
+	});
+
 	return (
 		<Card
 			key={post.id}
@@ -62,6 +76,14 @@ export default function PostCard({
 							}
 						>
 							Send Now
+						</Button>
+						<Button
+							size="sm"
+							disabled={postMutation.isPending}
+							variant="destructive"
+							onClick={() => deleteMutation.mutate(post.id)}
+						>
+							Delete
 						</Button>
 					</div>
 				)}

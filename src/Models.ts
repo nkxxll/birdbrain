@@ -9,7 +9,6 @@ export class NoPostLeftError extends Data.TaggedError("NoPostLeftError")<{
   message?: string;
 }> {}
 
-
 export class RefreshError extends Data.TaggedError("RefreshError")<{
   message?: string;
   cause?: unknown;
@@ -21,6 +20,12 @@ export class SessionTokenNotFound extends Data.TaggedError(
   message?: string;
   cause?: unknown;
 }> {}
+
+export const DeleteParams = Schema.Struct({
+  id: Schema.String,
+});
+
+export type DeleteParams = Schema.Schema.Type<typeof DeleteParams>;
 
 export const PostApiData = Schema.Struct({
   text: Schema.String,

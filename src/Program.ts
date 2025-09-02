@@ -13,6 +13,7 @@ import { Logger, Option, Schema, Effect, Layer, Ref, HashMap } from "effect";
 import {
   ApiTweetPostRequest,
   ApiUserDataResponse,
+  DeleteParams,
   NoPostLeftError,
   RefreshError,
   SessionTokenNotFound,
@@ -23,6 +24,7 @@ import {
   ProgressService,
   SessionStore,
   SessionStoreItemService,
+  SQLiteService,
   VerifierStore,
 } from "./Services.js";
 import {
@@ -52,6 +54,19 @@ const sessionCookieDefaults = {
 };
 
 const authenticatedRouter = HttpRouter.empty.pipe(
+  HttpRouter.del(
+    "/delete/:id",
+    Effect.gen(function* () {
+      const ssi = yield* SessionStoreItemService;
+      const db = yield* SQLiteService;
+      const params = yield* HttpRouter.schemaPathParams(DeleteParams);
+
+      const sql = `DELETE FROM posts WHERE user_id = ?1 AND id = ?2`;
+      const res = yield* db.exec(sql, [ssi.userId, params.id]);
+      yield* Effect.log(res);
+      return HttpServerResponse.text("Deleted Successfully!", { status: 201 });
+    })
+  ),
   HttpRouter.get(
     "/sendrandom",
     Effect.gen(function* () {
