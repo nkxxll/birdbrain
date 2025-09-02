@@ -311,7 +311,7 @@ const router = HttpRouter.empty.pipe(
 
         // create the user in the database if the user does not exist
         const userRes = yield* makeUserDataRequest(tokenResponse.access_token);
-        yield* Effect.log(JSON.stringify(userRes));
+        yield* Effect.log(`User Data: ${JSON.stringify(userRes)}`);
         const data = yield* Schema.decodeUnknown(ApiUserDataResponse)(userRes);
         if (data.errors) {
           return yield* HttpServerResponse.json(data.errors, { status: 500 });
