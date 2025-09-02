@@ -11,20 +11,31 @@ export class ProgressLayer extends Effect.Service<ProgressLayer>()(
         yield* Effect.log("Step itteration...");
         const ps = yield* ProgressService;
         const kv = yield* Ref.get(ps);
-        for (const key of HashMap.keys(kv)) {
-          const value = HashMap.get(kv, key);
-          if (Option.isNone(value)) {
+        for (const userId of HashMap.keys(kv)) {
+          const progressItemOption = HashMap.get(kv, userId);
+          if (Option.isNone(progressItemOption)) {
             yield* Effect.logWarning(
               "Itterating through keys but the value is not there this should never happen!"
             );
             continue;
           }
-          const newVal = (value.value + 10) % 100;
-          yield* Ref.update(ps, HashMap.set(key, newVal));
-          yield* Effect.log(`updateing progress to key: ${key} val:${newVal}`);
+          // all 6 mins we increase by 5 so every 2h we trigger
+          const newVal = (progressItemOption.value.progress + 5) % 100;
+          yield* Ref.update(
+            ps,
+            HashMap.set(userId, {
+              ...progressItemOption.value,
+              progress: newVal,
+            })
+          );
+          yield* Effect.log(
+            `updateing progress to key: ${userId} val:${newVal}`
+          );
           if (newVal === 0) {
             yield* Effect.log("Sending message!");
-            const res = yield* sendRandomPost(key);
+            const res = yield* sendRandomPost(
+              progressItemOption.value.sessionId
+            );
             yield* Effect.log("Response from server " + JSON.stringify(res));
             yield* Effect.log("Sent message!");
           }

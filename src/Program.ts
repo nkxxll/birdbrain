@@ -239,7 +239,8 @@ const router = HttpRouter.empty.pipe(
         const config = yield* AppConfig;
         const sessionStore = yield* SessionStore;
         const verifierStore = yield* VerifierStore;
-        const ps = yield* ProgressService;
+        const psRef = yield* ProgressService;
+        const ps = yield* Ref.get(psRef);
         const vs = yield* Ref.get(verifierStore);
 
         const { state, code } = getAuthParams(
@@ -296,15 +297,32 @@ const router = HttpRouter.empty.pipe(
           );
         }
 
-        yield* makeUser(data.data!);
+        const user = data.data!;
+
+        yield* makeUser(user);
         yield* Ref.update(
           sessionStore,
           HashMap.set(sessionId, {
-            userId: data.data!.id,
+            userId: user.id,
             tokenResponse,
           })
         );
-        yield* Ref.update(ps, HashMap.set(sessionId, 0));
+        // see if the user already has logged in
+        const progressItem = HashMap.get(ps, user.id);
+        if (Option.isNone(progressItem)) {
+          yield* Ref.update(
+            psRef,
+            HashMap.set(user.id, { progress: 0, sessionId: sessionId })
+          );
+        } else {
+          yield* Ref.update(
+            psRef,
+            HashMap.set(user.id, {
+              progress: progressItem.value.progress,
+              sessionId: sessionId,
+            })
+          );
+        }
 
         return yield* HttpServerResponse.redirect(config.appUrl).pipe(
           HttpServerResponse.setCookie(

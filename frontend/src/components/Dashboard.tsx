@@ -59,12 +59,7 @@ export default function App() {
 	const pollProgressMutation = useMutation({
 		mutationFn: pollProgress,
 		onSuccess: (data: number) => {
-			console.log(
-				data,
-				lastProgress.current,
-				data === 0 && lastProgress.current === 90,
-			);
-			if (data === 0 && lastProgress.current === 90) {
+			if (data === 0 && lastProgress.current !== data) {
 				toast.success("Send new post randomly");
 				queryClient.invalidateQueries({ queryKey: ["posts"] });
 			}

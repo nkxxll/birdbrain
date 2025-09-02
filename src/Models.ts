@@ -25,6 +25,12 @@ export const DeleteParams = Schema.Struct({
   id: Schema.String,
 });
 
+export const ProgressItem = Schema.Struct({
+  progress: Schema.Number,
+  sessionId: Schema.String,
+});
+export type ProgressItem = Schema.Schema.Type<typeof ProgressItem>;
+
 export type DeleteParams = Schema.Schema.Type<typeof DeleteParams>;
 
 export const PostApiData = Schema.Struct({
