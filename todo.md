@@ -1,6 +1,6 @@
 # todo
 
-- [ ] basic frontend
+- [-] basic frontend
   - [x] landing page
   - [x] application
   - [x] navigation bar
@@ -11,22 +11,26 @@
     - [x] does redirect on the query though
   - [x] ui show sent messages as grayed out
   - [x] be able to send posts directly with the was_sent flag set already
-  - [ ] delete posts
+  - [x] delete posts
   - [x] copy posts text
   - [ ] be able to save @ users or something like this just a better editing experience when
         writing a post
   - [x] emojis?! omarchy does this
 - [x] provide config as layer
 - [x] sqlite database layer
-- [ ] delete posts that are saved and not sent
+- [x] delete posts that are saved and not sent
 - [x] sqlite saving of future (not sent) posts
 - [ ] endpoint for looking up stats of a post and saving the stats of a post with the post in the db
 - [x] make real crypto for the oauth flow
 - [x] full session management solution somehow
 - [x] reactive refresh token usage
 - [x] scheduled sending of messages from the database
-- [ ] set up deployment
-  - [ ] ssh copy id to pi
-  - [ ] set up nginx server fully
-  - [ ] set up the backend as a systemctl service
-  - [ ] make script that updates the directories and restarts the nginx and the backend server
+- [x] set up deployment
+  - [x] ssh copy id to pi
+  - [x] set up nginx server fully
+  - [x] set up the backend as a systemctl service
+  - [x] make script that updates the directories and restarts the nginx and the backend server
+- [ ] the random sending is broken a little bit all available posts get sent at once
+- [ ] send posts by user id not by session id because we want a session id per device but a user
+can log in from many different devices which all get a different session id
+- [ ] fix refresh 400 because of token_type bearer field
