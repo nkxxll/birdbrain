@@ -68,7 +68,9 @@ const authenticatedRouter = HttpRouter.empty.pipe(
       }
 
       const res = yield* makeTweetPostRequest(
-        { text: "But if it works it is just one of the best feelings in the world!!!" },
+        {
+          text: "But if it works it is just one of the best feelings in the world!!!",
+        },
         sessionIdOption.value,
         "hahaha this accestoken is trash"
       );
@@ -125,7 +127,9 @@ const authenticatedRouter = HttpRouter.empty.pipe(
         );
       }
 
-      return yield* HttpServerResponse.json({ progress: progress.value });
+      return yield* HttpServerResponse.json({
+        progress: progress.value.progress,
+      });
     })
   ),
   HttpRouter.get(
