@@ -107,19 +107,11 @@ const authenticatedRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     "/pollprogress",
     Effect.gen(function* () {
-      const req = yield* HttpServerRequest.HttpServerRequest;
-      const sessionId = Option.fromNullable(req.cookies["sessionId"]);
-      const ps = yield* ProgressService;
-      if (Option.isNone(sessionId)) {
-        return HttpServerResponse.text(
-          "Server error session id should be here",
-          { status: 500 }
-        );
-      }
-
-      const kv = yield* Ref.get(ps);
-      yield* Effect.log(kv);
-      const progress = HashMap.get(kv, sessionId.value);
+      const ssi = yield* SessionStoreItemService;
+      const psRef = yield* ProgressService;
+      const ps = yield* Ref.get(psRef);
+      yield* Effect.log(ps);
+      const progress = HashMap.get(ps, ssi.userId);
       if (Option.isNone(progress)) {
         return HttpServerResponse.text(
           "Progress should be present here because you are logged in!",

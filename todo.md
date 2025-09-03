@@ -30,7 +30,7 @@
   - [x] set up nginx server fully
   - [x] set up the backend as a systemctl service
   - [x] make script that updates the directories and restarts the nginx and the backend server
-- [ ] the random sending is broken a little bit all available posts get sent at once
-- [ ] send posts by user id not by session id because we want a session id per device but a user
+- [x] the random sending is broken a little bit all available posts get sent at once
+- [x] send posts by user id not by session id because we want a session id per device but a user
 can log in from many different devices which all get a different session id
-- [ ] fix refresh 400 because of token_type bearer field
+- [x] fix refresh 400 because of token_type bearer field
