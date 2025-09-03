@@ -1,12 +1,5 @@
-import {
-  HashMap,
-  Ref,
-  Effect,
-  Config,
-  ConfigError,
-  Context,
-} from "effect";
-import { DatabaseError, SessionStoreItem } from "./Models.js";
+import { HashMap, Ref, Effect, Config, ConfigError, Context } from "effect";
+import { DatabaseError, ProgressItem, SessionStoreItem } from "./Models.js";
 import { Database, SQLQueryBindings } from "bun:sqlite";
 
 export class SessionStoreItemService extends Context.Tag(
@@ -34,7 +27,7 @@ export class VerifierStore extends Effect.Service<VerifierStore>()(
 export class ProgressService extends Effect.Service<ProgressService>()(
   "ProgressService",
   {
-    effect: Ref.make(HashMap.empty<string, number>()),
+    effect: Ref.make(HashMap.empty<string, ProgressItem>()),
   }
 ) {}
 
