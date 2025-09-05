@@ -137,7 +137,9 @@ export const makeTweetPostRequest = (
       jsonResUnknown
     );
 
-    yield* Effect.logInfo(`Post sent successfully response: ${jsonRes}`);
+    yield* Effect.logInfo(
+      `Post sent successfully response: ${JSON.stringify(jsonRes)}`
+    );
 
     return yield* HttpClientResponse.schemaBodyJson(ApiPostResponse)(
       postResponse
@@ -228,6 +230,8 @@ export const makeAuthRequest = (url: string | URL) =>
     const response = yield* client.execute(req);
 
     const json = yield* response.json;
+
+    yield* Effect.log(`Response from auth request ${JSON.stringify(json)}`);
 
     const tokenResponse = yield* Schema.decodeUnknown(
       TwitterTokenResponseSchema

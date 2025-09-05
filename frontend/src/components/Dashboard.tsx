@@ -54,7 +54,7 @@ export default function App() {
 	});
 
 	const [progress, setProgress] = useState(0);
-	const lastProgress = useRef<number>(0);
+	const lastProgress = useRef<number | null>(null);
 
 	const pollProgressMutation = useMutation({
 		mutationFn: pollProgress,
