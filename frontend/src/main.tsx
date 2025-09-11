@@ -55,7 +55,12 @@ const logoutRoute = createRoute({
 });
 
 
-const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, logoutRoute]);
+const routeTree = rootRoute.addChildren([
+	indexRoute,
+	dashboardRoute,
+	handlesRoute,
+	logoutRoute,
+]);
 
 const TanStackQueryProviderContext = TanStackQueryProvider.getContext();
 const router = createRouter({

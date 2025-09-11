@@ -83,3 +83,44 @@ export const fetchTwitterHandles = async (): Promise<UserHandle[]> => {
 	const data = await res.json();
 	return data;
 };
+
+export const createTwitterHandle = async (handle: Partial<UserHandle>) => {
+	const res = await fetch("/api/twitter_handles", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(handle),
+	}).catch((err) => {
+		throw new ApiError(err);
+	});
+	if (!res.ok) {
+		throw new ApiError(new Error("Failed to create handle"), res.status);
+	}
+	return res;
+};
+
+export const updateTwitterHandle = async ({ id, ...handle }: UserHandle) => {
+	if (!id) throw new Error("ID is required for updating");
+	const res = await fetch(`/api/twitter_handles/${id}`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(handle),
+	}).catch((err) => {
+		throw new ApiError(err);
+	});
+	if (!res.ok) {
+		throw new ApiError(new Error("Failed to update handle"), res.status);
+	}
+	return res;
+};
+
+export const deleteTwitterHandle = async (id: number) => {
+	const res = await fetch(`/api/twitter_handles/${id}`, {
+		method: "DELETE",
+	}).catch((err) => {
+		throw new ApiError(err);
+	});
+	if (!res.ok) {
+		throw new ApiError(new Error("Failed to delete handle"), res.status);
+	}
+	return res;
+};

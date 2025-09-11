@@ -11,6 +11,12 @@ export default function Header({ children }: { children: ReactNode }) {
 						<Link to="/">Home</Link>
 					</div>
 					<div className="px-2 font-bold">
+						<Link to="/dashboard">Dashboard</Link>
+					</div>
+					<div className="px-2 font-bold">
+						<Link to="/handles">Handles</Link>
+					</div>
+					<div className="px-2 font-bold">
 						<a href="/api/login">Login</a>
 					</div>
 					<div className="px-2 font-bold">

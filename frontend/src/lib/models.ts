@@ -17,6 +17,7 @@ export class ApiError extends Error {
 }
 
 export interface UserHandle {
+  id?: number;
   readonly username: string,
   readonly handle: string,
 }
