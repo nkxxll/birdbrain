@@ -1,4 +1,4 @@
-import { ApiError, type Post } from "./models";
+import { ApiError, type Post, type UserHandle } from "./models";
 
 export const pollProgress = async (): Promise<number> => {
 	const res = await fetch("/api/pollprogress").catch((err) => {
@@ -71,4 +71,15 @@ export const deletePost = async (id: number) => {
 		throw new ApiError(new Error("Failed to delete tweet"), res.status);
 	}
 	return res;
+};
+
+export const fetchTwitterHandles = async (): Promise<UserHandle[]> => {
+	const res = await fetch("/api/twitter_handles").catch((err) => {
+		throw new ApiError(err);
+	});
+	if (!res.ok) {
+		throw new ApiError(new Error("Network response was not ok"), res.status);
+	}
+	const data = await res.json();
+	return data;
 };

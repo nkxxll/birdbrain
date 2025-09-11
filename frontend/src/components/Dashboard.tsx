@@ -3,13 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { savePost, fetchPosts, tweetPost, pollProgress } from "@/lib/api";
+import {
+	savePost,
+	fetchPosts,
+	tweetPost,
+	pollProgress,
+	fetchTwitterHandles,
+} from "@/lib/api";
 import type { ApiError, UserHandle } from "@/lib/models";
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "react-hot-toast";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PostCard from "./PostCard";
-import { TWITTER_HANELE_COMPLETIONS } from "@/lib/completion_list";
 import { Progress } from "./ui/progress";
 
 // Main component for the site
@@ -88,6 +93,12 @@ export default function App() {
 		retry: false,
 	});
 
+	const { data: twitterHandles } = useQuery<UserHandle[]>({
+		queryKey: ["twitter_handles"],
+		queryFn: fetchTwitterHandles,
+		retry: false,
+	});
+
 	const [newPostContent, setNewPostContent] = useState("");
 	const maxCharacters = 280;
 	const [suggestions, setSuggestions] = useState<UserHandle[]>([]);
@@ -111,7 +122,7 @@ export default function App() {
 
 		if (lastWord.startsWith("@")) {
 			const query = lastWord.substring(1).toLowerCase();
-			const matches = TWITTER_HANELE_COMPLETIONS.filter(
+			const matches = (twitterHandles ?? []).filter(
 				(user) =>
 					user.handle.toLowerCase().startsWith("@" + query) ||
 					user.username.toLowerCase().startsWith(query),
