@@ -56,6 +56,70 @@ const sessionCookieDefaults = {
 
 const authenticatedRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
+    "/twitter_handles",
+    Effect.gen(function* () {
+      const ssi = yield* SessionStoreItemService;
+      const db = yield* SQLiteService;
+      const sql = `SELECT id, handle, username FROM user_handles WHERE user_id = ?1`;
+      const result = yield* db.all(sql, [ssi.userId]);
+      const handles = yield* Schema.decodeUnknown(
+        Schema.array(UserHandleSchema)
+      )(result);
+      return yield* HttpServerResponse.json(handles);
+    })
+  ),
+  HttpRouter.post(
+    "/twitter_handles",
+    Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
+      Effect.gen(function* () {
+        const ssi = yield* SessionStoreItemService;
+        const db = yield* SQLiteService;
+        const body = yield* req.json;
+        const handle = yield* Schema.decodeUnknown(UserHandleSchema)(body);
+
+        const sql = `INSERT INTO user_handles (user_id, handle, username) VALUES (?1, ?2, ?3)`;
+        yield* db.exec(sql, [ssi.userId, handle.handle, handle.username]);
+
+        return HttpServerResponse.text("Handle created", { status: 201 });
+      })
+    )
+  ),
+  HttpRouter.put(
+    "/twitter_handles/:id",
+    Effect.flatMap(HttpServerRequest.HttpServerRequest, (req) =>
+      Effect.gen(function* () {
+        const ssi = yield* SessionStoreItemService;
+        const db = yield* SQLiteService;
+        const params = yield* HttpRouter.schemaPathParams(UserHandleIdParams);
+        const body = yield* req.json;
+        const handle = yield* Schema.decodeUnknown(UserHandleSchema)(body);
+
+        const sql = `UPDATE user_handles SET handle = ?1, username = ?2 WHERE id = ?3 AND user_id = ?4`;
+        yield* db.exec(sql, [
+          handle.handle,
+          handle.username,
+          params.id,
+          ssi.userId,
+        ]);
+
+        return HttpServerResponse.text("Handle updated");
+      })
+    )
+  ),
+  HttpRouter.del(
+    "/twitter_handles/:id",
+    Effect.gen(function* () {
+      const ssi = yield* SessionStoreItemService;
+      const db = yield* SQLiteService;
+      const params = yield* HttpRouter.schemaPathParams(UserHandleIdParams);
+
+      const sql = `DELETE FROM user_handles WHERE id = ?1 AND user_id = ?2`;
+      yield* db.exec(sql, [params.id, ssi.userId]);
+
+      return HttpServerResponse.text("Deleted Successfully!", { status: 200 });
+    })
+  ),
+  HttpRouter.get(
     "/refresh",
     Effect.gen(function* () {
       const req = yield* HttpServerRequest.HttpServerRequest;

@@ -14,3 +14,12 @@ CREATE TABLE IF NOT EXISTS posts (
     was_sent INTEGER DEFAULT 0 NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS user_handles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    username TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, handle)
+);
