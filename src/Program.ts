@@ -36,13 +36,12 @@ import {
   makeUserDataRequest,
   queryPosts,
   queryUserData,
-  refreshAuthToken,
   savePost,
   sendRandomPost,
   setSent,
 } from "./Utils.js";
 import { SessionTokenMiddleware } from "./Middleware.js";
-import { TWITTER_OAUTH_TOKEN_URL } from "./Contants.js";
+import { TWITTER_OAUTH_AUTHORIZE, TWITTER_OAUTH_TOKEN_URL } from "./Contants.js";
 import { RequestError, ResponseError } from "@effect/platform/HttpClientError";
 import { ParseError } from "effect/ParseResult";
 
@@ -437,7 +436,6 @@ const router = HttpRouter.empty.pipe(
 
       yield* Ref.update(verifierStore, HashMap.set(state, randomVerifierBase));
 
-      const rootUrl = "https://twitter.com/i/oauth2/authorize";
       const options = {
         redirect_uri: config.redirectUrl,
         client_id: config.clientId,
@@ -456,7 +454,7 @@ const router = HttpRouter.empty.pipe(
         ].join(" "), // add/remove scopes as needed
       };
       const qs = new URLSearchParams(options).toString();
-      const url = `${rootUrl}?${qs}`;
+      const url = `${TWITTER_OAUTH_AUTHORIZE}?${qs}`;
       return HttpServerResponse.redirect(url);
     })
   )

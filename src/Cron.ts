@@ -44,6 +44,7 @@ export class ProgressLayer extends Effect.Service<ProgressLayer>()(
       });
 
       const cron = Cron.unsafeParse("*/6 * * * *");
+      // const cron = Cron.unsafeParse("*/6 * * * * *"); // every 6 secs for testing
       const schedule = Schedule.cron(cron);
       return yield* Effect.repeat(sendProgress, schedule);
     }),

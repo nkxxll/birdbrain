@@ -33,4 +33,4 @@
 - [x] the random sending is broken a little bit all available posts get sent at once
 - [x] send posts by user id not by session id because we want a session id per device but a user
 can log in from many different devices which all get a different session id
-- [x] fix refresh 400 because of token_type bearer field
+- [-] fix refresh 400 because of token_type bearer field

@@ -84,6 +84,7 @@ export default function App() {
 		const interval = setInterval(() => {
 			pollProgressMutation.mutate();
 		}, 1000 * 60); // 1 min
+		// }, 1000); // 1 sec
 		return () => clearInterval(interval);
 	}, []);
 
