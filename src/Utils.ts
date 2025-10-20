@@ -231,7 +231,7 @@ export const makeAuthRequest = (url: string | URL) =>
 
     const json = yield* response.json;
 
-    yield* Effect.log(`Response from auth request ${JSON.stringify(json)}`);
+    // yield* Effect.log(`Response from auth request ${JSON.stringify(json)}`); // only in debuggin
 
     const tokenResponse = yield* Schema.decodeUnknown(
       TwitterTokenResponseSchema

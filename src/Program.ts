@@ -18,6 +18,9 @@ import {
   RefreshError,
   SessionTokenNotFound,
   TwitterTokenResponseSchema,
+  UserHandleCreateSchema,
+  UserHandleIdParams,
+  UserHandleSchema,
 } from "./Models.js";
 import {
   AppConfig,
@@ -41,9 +44,13 @@ import {
   setSent,
 } from "./Utils.js";
 import { SessionTokenMiddleware } from "./Middleware.js";
-import { TWITTER_OAUTH_AUTHORIZE, TWITTER_OAUTH_TOKEN_URL } from "./Contants.js";
+import {
+  TWITTER_OAUTH_AUTHORIZE,
+  TWITTER_OAUTH_TOKEN_URL,
+} from "./Contants.js";
 import { RequestError, ResponseError } from "@effect/platform/HttpClientError";
 import { ParseError } from "effect/ParseResult";
+import { HttpBodyError } from "@effect/platform/HttpBody";
 
 const sessionCookieDefaults = {
   path: "/", // available everywhere
@@ -59,10 +66,11 @@ const authenticatedRouter = HttpRouter.empty.pipe(
     Effect.gen(function* () {
       const ssi = yield* SessionStoreItemService;
       const db = yield* SQLiteService;
-      const sql = `SELECT id, handle, username FROM user_handles WHERE user_id = ?1`;
-      const result = yield* db.all(sql, [ssi.userId]);
+      const sql = `SELECT id, user_id, handle, username FROM user_handles WHERE user_id = ?1`;
+      const result = yield* db.query(sql, [ssi.userId]);
+      yield* Effect.log(`handle db query results ${JSON.stringify(result)}`);
       const handles = yield* Schema.decodeUnknown(
-        Schema.array(UserHandleSchema)
+        Schema.Array(UserHandleSchema)
       )(result);
       return yield* HttpServerResponse.json(handles);
     })
@@ -74,7 +82,9 @@ const authenticatedRouter = HttpRouter.empty.pipe(
         const ssi = yield* SessionStoreItemService;
         const db = yield* SQLiteService;
         const body = yield* req.json;
-        const handle = yield* Schema.decodeUnknown(UserHandleSchema)(body);
+        const handle = yield* Schema.decodeUnknown(UserHandleCreateSchema)(
+          body
+        );
 
         const sql = `INSERT INTO user_handles (user_id, handle, username) VALUES (?1, ?2, ?3)`;
         yield* db.exec(sql, [ssi.userId, handle.handle, handle.username]);
@@ -91,7 +101,7 @@ const authenticatedRouter = HttpRouter.empty.pipe(
         const db = yield* SQLiteService;
         const params = yield* HttpRouter.schemaPathParams(UserHandleIdParams);
         const body = yield* req.json;
-        const handle = yield* Schema.decodeUnknown(UserHandleSchema)(body);
+        const handle = yield* Schema.decodeUnknown(UserHandleCreateSchema)(body);
 
         const sql = `UPDATE user_handles SET handle = ?1, username = ?2 WHERE id = ?3 AND user_id = ?4`;
         yield* db.exec(sql, [
@@ -485,6 +495,8 @@ const cronEffect = Layer.launch(ProgressLayer.Default).pipe(
       Effect.logError(
         `ResponseError not found error: ${e.message}\nCause: ${e.cause}`
       ),
+    HttpBodyError: (e: HttpBodyError) =>
+      Effect.logError(`ResponseError not found error: ${e.reason}`),
     RefreshError: (e: RefreshError) =>
       Effect.logError(`Error while refreshing ${e.message}\nCause: ${e.cause}`),
     NoPostLeftError: (e: NoPostLeftError) =>

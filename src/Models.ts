@@ -76,6 +76,24 @@ export const TwitterTokenResponseSchema = Schema.Struct({
   scope: Schema.String,
 });
 
+export const UserHandleCreateSchema = Schema.Struct({
+  handle: Schema.String,
+  username: Schema.String,
+});
+export type UserHandleCreateSchema = Schema.Schema.Type<typeof UserHandleCreateSchema>;
+
+export const UserHandleSchema = Schema.Struct({
+  id: Schema.Number,
+  user_id: Schema.String,
+  handle: Schema.String,
+  username: Schema.String,
+});
+
+export type UserHandleSchema = Schema.Schema.Type<typeof UserHandleSchema>;
+
+export const UserHandleIdParams = Schema.Struct({ id: Schema.String });
+export type UserHandleIdParams = Schema.Schema.Type<typeof UserHandleSchema>;
+
 export const Post = Schema.Struct({
   id: Schema.Number,
   user_id: Schema.String,

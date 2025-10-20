@@ -21,6 +21,7 @@ import Dashboard from "./components/Dashboard.tsx";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
 import { Toaster } from "react-hot-toast";
 import Logout from "./components/Logout.tsx";
+import HandleManager from "./components/HandleManager.tsx";
 
 const rootRoute = createRootRoute({
 	component: () => (
@@ -54,6 +55,11 @@ const logoutRoute = createRoute({
 	component: Logout,
 });
 
+const handlesRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/handles",
+	component: HandleManager,
+});
 
 const routeTree = rootRoute.addChildren([
 	indexRoute,
