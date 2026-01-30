@@ -2,6 +2,8 @@
 
 ![BirdBainLogo](./assets/birdbrain_logo.png)
 
+![BirdBain Showcase](./assets/showcase.png)
+
 This is a project to send very important and life changing messages to twitter.com (formally known as
 X.com). First and foremost this is a project for me to (really) learn Effect. I tried it before but
 I haven't build something _real_ with it jet.
